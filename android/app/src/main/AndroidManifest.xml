@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Capture (Track A, roles.md A-1): rear-camera pose preview. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <application
         android:label="reprush"
         android:name="${applicationName}"

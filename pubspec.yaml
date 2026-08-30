@@ -36,6 +36,14 @@ dependencies:
   # client directly.
   flutter_riverpod: ^3.0.3
 
+  # Capture (Track A): camera stream → on-device ML Kit pose landmarks.
+  # camera is pinned to the 0.11.x line — 0.12.x requires Android SDK 24+,
+  # which breaks the ML Kit pose-detection minSdk of 23 (roles.md A-1).
+  # camera 0.11.x endorses camera_android_camerax, which streams real NV21
+  # for an ImageFormatGroup.nv21 controller (see capture/camera adapter).
+  camera: ^0.11.2
+  google_mlkit_pose_detection: ^0.16.1
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8

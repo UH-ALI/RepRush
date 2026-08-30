@@ -19,6 +19,10 @@ android {
         applicationId = "com.example.reprush"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // minSdk: ML Kit Pose Detection needs >= 21 (roles.md A-1) and the
+        // camera pin (0.11.x) supports SDK 21+. The Flutter 3.44 toolchain
+        // rewrites any literal below flutter.minSdkVersion (24) on every
+        // build, so the effective minSdk is 24 - still above ML Kit's floor.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

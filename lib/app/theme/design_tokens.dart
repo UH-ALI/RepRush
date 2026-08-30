@@ -19,6 +19,12 @@ abstract final class RepRushTokens {
 
   /// The venue-green brand seed.
   static const Color brand = Color(0xFF3DBB6E);
+
+  /// Coaching amber — "still time to correct" (pipeline DESCENDING cue).
+  static const Color feedbackAmber = Color(0xFFFFA726);
+
+  /// Coaching red — failure states (shallow return, tracking lost).
+  static const Color feedbackRed = Color(0xFFB3261E);
 }
 
 /// The three ownership states shown on the map and boards.
