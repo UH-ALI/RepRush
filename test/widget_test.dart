@@ -1,30 +1,69 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+/// App startup test — the shell renders the four destinations and tab
+/// navigation works against the stub repositories.
+library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:reprush/main.dart';
+import 'package:reprush/app/app.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('app boots into the Map tab with all four destinations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Territory'), findsOneWidget);
+    for (final label in const ['Map', 'Workout', 'Profile', 'Challenges']) {
+      expect(find.text(label), findsOneWidget);
+    }
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Stub territory loads: the legend is visible and labelled (N9).
+    await tester.pumpAndSettle();
+    expect(find.text('Yours'), findsOneWidget);
+    expect(find.text('Rival'), findsOneWidget);
+    expect(find.text('Unclaimed'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('Workout tab shows the session card and capture placeholder', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Workout'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No active session'), findsOneWidget);
+    expect(find.text('Start session'), findsOneWidget);
+    expect(find.text('Camera counter'), findsOneWidget);
+    // The seeded Riverside rig is nearby (stub spots); it sits below the
+    // fold, so scroll the screen's ListView into range first.
+    await tester.scrollUntilVisible(
+      find.text('Riverside Calisthenics Rig'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Riverside Calisthenics Rig'), findsOneWidget);
+  });
+
+  testWidgets('Profile tab renders the stub profile through providers', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('demo_athlete'), findsOneWidget);
+    expect(find.text('Level 3 · 540 XP'), findsOneWidget);
+    // The diary teaser sits below the fold in the ListView.
+    await tester.scrollUntilVisible(
+      find.text('Diary — coming in v2'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Diary — coming in v2'), findsOneWidget);
   });
 }

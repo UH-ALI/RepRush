@@ -1,5 +1,5 @@
 name: reprush
-description: "A new Flutter project."
+description: "RepRush — a territory game you play with your body. Camera-counted calisthenics reps capture hexes and spots."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -30,6 +30,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # State management — see docs/api-contract.md §state. Feature-scoped
+  # providers; repositories wrap all API access; UI never calls a backend
+  # client directly.
+  flutter_riverpod: ^3.0.3
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
