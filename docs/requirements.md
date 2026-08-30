@@ -34,7 +34,7 @@ Everything below is scoped so that on Day 7 you can do one uninterrupted take: s
 
 ### MUST
 - Auth + minimal profile
-- Camera counter for **5 movements** — squat, push-up, **pull-up**, jumping jack, plank — with live on-screen and **audible** feedback
+- Camera counter for **5 movements** — squat, push-up, **pull-up**, jumping jack, plank — with live on-screen and **audible** feedback. **Squat ships in Slice 1; the rest land in later slices** (*Scope sequencing* below)
 - Workout session → server-validated score submission
 - **Two territory scales:** H3 hexes (claim, hold, capture, decay) and Spots (capture by presence, with a standing board)
 - Spots held contribute bonus power to their containing hex — the loops feed each other
@@ -64,6 +64,13 @@ Everything below is scoped so that on Day 7 you can do one uninterrupted take: s
 - Payments, moderation tooling, appeals process
 - Offline conflict resolution beyond a simple submit queue
 - Automatic movement recognition (you pick the exercise; see B14)
+- Self-reported activity as scoring input — diary entries are non-competitive history only (B13, DiaryEntry)
+
+### Scope sequencing — slices
+
+**Slice 1** is the whole product at one movement's width: **squat**, the complete Evidence → server → ledger loop, one claimed hex, **one minimal seeded Spot**, and the live-feedback system (green / amber / red). Everything else waits until that loop is proven end to end.
+
+**Later slices**, in order: additional movements (push-up → pull-up → plank → jumping jack) · advanced Spot features (user creation, 3-user verification, standing boards) · integrity hardening (attestation, plausibility validators, rate limits) · progression depth (XP curve, variation-tree unlocks, achievements) · mission personalization.
 
 ---
 
@@ -97,13 +104,18 @@ The Judge is a real persona this week. §6-J exists entirely to serve them.
 - **Claim** — polymorphic over hex and spot: target, user, power contributed, timestamp
 - **PersonalRecord** — user, movement, metric (max reps / max hold / hardest tier), value, session
 - **Achievement / UserAchievement**
-- **Challenge / ChallengeProgress**
+- **ChallengeTemplate** — a challenge definition. Slice 1 ships exactly one static seeded daily template
+- **MissionAssignment** — user, template, assigned-at, validity window
+- **MissionProgress** — assignment, progress counted from verified, server-scored results only
 
-**Three structural rules:**
+**Four structural rules:**
 
 1. **The score ledger is append-only and reversible.** Every point traces to a session. A flagged session is voided and leaderboards recompute — no destructive edits. This is what makes anti-cheat survivable.
 2. **`RepEvent` and `PoseTrace` are stored, not just totals.** The server needs the raw stream to validate, and it gives you form replay for free if there's time.
 3. **Hexes and spots share one claim mechanic.** Two scales, one set of rules — see §5.
+4. **Missions may award capped XP only.** Territory power accrues only from verified RepScore earned in a session; missions never add territory power directly.
+
+**Adaptive Missions are future architecture.** Slice 1 ships one static seeded daily challenge, identical for everyone. Personalized, rule-based mission generation starts only after the first full loop (capture → submit → score → territory) is stable. Missions count verified, server-scored results only — and per structural rule 4, they award capped XP, never territory power.
 
 ---
 
@@ -224,20 +236,22 @@ Territory contributions accrue during a session and commit on submit. No continu
 | B2 | MUST | **No frame, image, or video ever leaves the device, ever.** ML Kit runs fully on-device; only derived numbers (angles, confidences, timestamps) are uploaded. Calisthenics-only is what lets this be absolute — there is no record claim that needs video proof |
 | B3 | MUST | Per-movement rep state machine over joint angles using **two thresholds (hysteresis)**, so jitter at the turnaround can't double-count |
 | B4 | MUST | Framing check before start — full body in frame — then a 3-2-1 countdown |
-| B5 | MUST | **Audible rep count and form cues.** The phone is propped 2 m away on the floor; the screen is unreadable mid-set. Not a nice-to-have |
-| B6 | MUST | On-screen overlay: rep count, skeleton, depth/ROM indicator, form warnings |
+| B5 | MUST | **Audible rep count and form cues.** The phone is propped 2 m away on the floor; the screen is unreadable mid-set. Every live-feedback state — green, amber, red — carries an appropriate audio cue. Not a nice-to-have |
+| B6 | MUST | On-screen overlay: rep count, skeleton, depth/ROM indicator, and the three-state live-feedback signal — **green** = tracking and form valid; **amber** = actionable correction (e.g. "go lower"); **red** = tracking lost, out of frame, or an invalid attempt completed. Every state is visibly signalled |
 | B7 | MUST | Low-confidence reps still count but are flagged and reduce `formFactor` |
-| B8 | SHOULD | Manual ± correction on the summary screen, recorded in the ledger rather than silently trusted |
+| B8 | SHOULD | Manual ± correction on the summary screen is a **local-only UI annotation** — displayed for the user, never transmitted, never alters server-scored results |
 | B9 | MUST | Session summary: reps, RepScore, form grade, PR detection, any tier unlocked |
 | B10 | MUST | **v1 movement set: squat, push-up, pull-up, jumping jack, plank** (§4). Pull-up reuses the push-up elbow-angle machinery, so it is the cheapest of the five to add once push-up works |
 | B11 | MUST | **Per-movement camera placement guidance** before the set — an illustration plus one line ("phone on the floor, side view, 2 m back"). Placement differs per movement and users get it wrong by default. Cheap to build, and it's the difference between the counter working and not |
 | B12 | MUST | **Hold capture** for `holdTime` movements: form-gated timer with a live in-form / out-of-form indicator |
-| B13 | SHOULD | **Diary entry** for movements outside the catalogue. Recorded in personal history, **worth zero points**: no XP, no board, no territory. Keeps the log useful while adding no attack surface |
+| B13 | SHOULD | **Diary entry** for movements outside the catalogue — a future, non-competitive `DiaryEntry` (exercise name, sets, reps, optional weight/duration, notes). Private history and personal-PR context only: **zero competitive consequences** — no RepScore, no XP, no board, no territory, no mission progress. Self-reported activity is never Evidence |
 | B14 | MUST | Movement is chosen explicitly before each set. Automatic recognition is **out of scope** — research problem, not a week-one feature |
 | B15 | SHOULD | Tier unlock moment when a user qualifies for a harder variation (§4) |
 | B16 | MUST | **Pull-up detection** on two independent signals: elbow angle (primary, same state machine as push-up) and shoulder-to-wrist vertical distance (confirmation, collapses toward zero at the top). The bar is never detected — the wrist landmarks *are* the bar |
 | B17 | MUST | **Pull-up framing**: phone ≥3 m back, elevated toward chest height where possible, full body in frame. A steep upward angle from the ground compresses the vertical axis and degrades the estimate — B11's guidance card must say so explicitly |
 | B18 | SHOULD | **Swing/kip penalty.** Kipping makes a pull-up materially easier, and horizontal hip displacement across a rep is directly measurable. Excess swing reduces `formFactor`, so strict reps score higher. This is a scoring-integrity requirement, not polish |
+
+> **Live feedback is a strict three-state system.** **Green** — tracking and form are valid, the rep will count. **Amber** — the rep is recoverable: give one actionable correction ("go lower"), never vague encouragement. **Red** — tracking lost, athlete out of frame, or an invalid attempt completed. Every state has a visible signal *and* an audio cue (B5), because the screen is unreadable mid-set.
 
 **Acceptance test for the whole track:** a 20-rep set at moderate tempo counts within **±1 rep**, across 3 different body types and 2 lighting conditions. If this fails on Day 2, trigger the fallback in §10.
 
@@ -297,7 +311,7 @@ Territory contributions accrue during a session and commit on submit. No continu
 
 | ID | Pri | Requirement |
 |---|---|---|
-| G1 | SHOULD | Daily challenge, identical for all users that day, generated server-side |
+| G1 | SHOULD | Daily challenge, identical for all users that day, generated server-side *(Slice 1: one static seeded daily template — personalization is a later slice)* |
 | G2 | COULD | Weekly challenge with a larger reward |
 | G3 | SHOULD | Visible progress plus an explicit claim step — claiming feels better than auto-award |
 
@@ -365,10 +379,11 @@ Judges will ask "what stops me from faking this?" — this table is the rehearse
 | ID | Pri | Requirement |
 |---|---|---|
 | J1 | MUST | Seed script: ~30 plausible users, populated hexes and spots around the demo venue, a competitive standing board |
-| J2 | MUST | **Mock-location mode** — a build flag pinning GPS to a chosen hex and spot, so you can capture on stage without walking outside |
+| J2 | MUST | **Mock-location mode** — local staging support for the on-stage demo. The server permits only a fixed server-authorized demo location and seeded Spot for allowlisted demo accounts (J7); mocked GPS from production accounts is rejected |
 | J3 | MUST | One-command reset to a clean demo state for repeat run-throughs |
 | J4 | MUST | Written demo script plus a rehearsed happy path, verified on the exact phone you'll present with |
 | J6 | MUST | **Confirm a pull-up bar for demo day** (venue rig, doorway bar, or a pre-recorded fallback set filmed on the real app). Resolve by Day 5 — see §10 |
+| J7 | MUST | **Demo-board routing is server-side** — derived from an authenticated, allowlisted demo account (server-side config). Never from Evidence fields, build flags, or client-side toggles. A client cannot opt itself into demo mode. A demo account is permitted only the fixed server-authorized demo location and seeded Spot; mocked GPS is rejected for production accounts. Demo-board data never appears in production competitive reads; it may appear only in the isolated demo-board experience |
 | J5 | SHOULD | Crash and error reporting visible to the team on demo day |
 
 ---
@@ -499,7 +514,7 @@ With three people the risk stops being "can we build it" and becomes "are two pe
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Pose counting isn't accurate enough** | Kills the product's credibility | Hard go/no-go end of Day 2. Fallback: manual rep entry becomes the scoring path, camera demoted to a "form check" showpiece. **B and C are unaffected** — the ledger accepts a rep stream, not a camera-specific payload, so only the input UI changes. A builds manual entry in half a day, then becomes a second Surface dev. Decide at the gate; don't drift |
+| **Pose counting isn't accurate enough** | Kills the product's credibility | Hard go/no-go end of Day 2. Fallback: the camera is demoted to a "form check" showpiece and the demo ships with whichever movements pass the gate — Slice 1 (squat) first. **There is no manual scoring path** — self-reported activity is diary-only and never scores. **B and C are unaffected**: the Evidence → server → ledger loop is not coupled to any particular movement, so only the capture UI changes. Decide at the gate; don't drift |
 | **Camera stream → `InputImage` plumbing** | Blocks all of Track A | The known Flutter sharp edge: rotation, YUV420 vs BGRA, plane layout. All of Day 1 is reserved for it. Not solved by end of Day 1 → escalate that evening; do not let it bleed into Day 2 |
 | **Platform config churn** (minSdk, iOS target, ML Kit pods) | Blocks everyone from running on device | A pushes it in the first two hours of Day 1 |
 | **Dart H3 bindings are immature** | A late, avoidable surprise in the map layer | Compute cells and boundaries server-side; the client only ever draws polygons |

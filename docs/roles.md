@@ -52,7 +52,7 @@ This costs about ten minutes a day and buys you the ability to merge without rea
 | A-18 | **Evidence file dump** — write a complete `evidence.json` to disk from any session, so B can `curl` it with no phone in the loop | `capture/pipeline/evidence.dart` | §4 Seam 1 | Day 2 |
 | A-9 | Framing check + 3-2-1 countdown | `capture/ui/framing_check.dart` | B4 | Day 2 |
 | A-19 | **Calibration capture during the countdown** — rest-pose signal, torso length, shoulder width. Thresholds become relative to the athlete's own start pose, which is the main defence against camera-angle drift and body proportions | `capture/pipeline/calibration.dart` | B4, B17 | **Day 2** |
-| A-10 | Capture HUD — skeleton overlay, rep count, ROM/depth indicator, form warnings (`CustomPainter`) | `capture/ui/capture_hud.dart` | B6 | Day 3 |
+| A-10 | Capture HUD — skeleton overlay, rep count, ROM/depth indicator, **three-state live feedback** (green = valid, amber = actionable correction such as "go lower", red = tracking lost / out of frame / completed invalid attempt), every state with visible signal plus audio cue (`CustomPainter`) | `capture/ui/capture_hud.dart` | B5, B6 | Day 3 |
 | A-12 | Per-movement camera placement cards — illustration plus one line | `capture/ui/placement_card.dart` | B11, B17 | Day 3 |
 | A-11 | **Audio rep count and form cues** (`flutter_tts`) | `capture/ui/audio/` | B5, N9 | Day 5 |
 | A-15 | **Trace fixture corpus + replay suite** — 20-rep sets across 3 body types and 2 lighting conditions, recorded once via A-17, hand-labelled, replayed through `pipeline/` in a plain `dart test` asserting ±1 | `test/capture/fixtures/`, `test/capture/replay_test.dart` | §6-B acceptance | **Day 2 gate**, then standing |
@@ -73,7 +73,7 @@ This costs about ten minutes a day and buys you the ability to merge without rea
 | B-4 | Movement catalogue seeded from §4 — ids, families, tiers, difficulty multipliers | `supabase/migrations/*_movements.sql` | §4 | **Day 1 — then frozen** |
 | B-5 | Scoring service — server-side recompute of `romScore` and `formFactor` ([formulas](api-contract.md#evidence)), then `reps × difficulty × formFactor × tempoFactor`, hold conversion, per-set and per-day caps. **Built against B-24's fixtures — B's Day 2 does not depend on A's Day 2 landing** | `supabase/functions/score/` | §4, I1 | Day 2 |
 | B-6 | Append-only score ledger plus the void/recompute path | `supabase/migrations/`, `supabase/functions/` | §3 rule 1, I12 | Day 2 |
-| B-7 | **One-shot sessions**: `/session/start` issues the id, submit consumes it, 4 h expiry | `supabase/functions/session-start/` | I2 | **Day 2 — first draft, not later** |
+| B-7 | **One-shot sessions**: `/session/start` issues the id (plus active `movementConfigVersion`) and records the session-start location/spot context; submit consumes it, 4 h expiry. Server rejects submit on `movementConfigVersion` mismatch and on `SESSION_CONTEXT_MISMATCH` (Evidence location/spot ≠ session-start context); territory resolution always uses the server-recorded start context | `supabase/functions/session-start/` | I2 | **Day 2 — first draft, not later** |
 | B-8 | **Wall-clock containment** — server-recorded start/submit, claimed timeline must fit inside it | `supabase/functions/session-submit/` | I3 | Day 2 |
 | B-9 | Claim + capture + **72 h half-life decay, computed lazily on read** — written once, shared by both scales | `supabase/functions/territory/` | D2, D3, §5 | Day 3 |
 | B-10 | Hex resolution: H3 res-8 indices and boundary polygons computed **server-side**, shipped as plain coordinates | `supabase/functions/hexes/` | §8 open-1 | Day 3 |
@@ -91,6 +91,7 @@ This costs about ten minutes a day and buys you the ability to merge without rea
 | B-21 | Rate limits plus the shadow-flag mechanism (**never hard-ban during a hackathon**) | `supabase/functions/` | I11, I13 | Day 6 |
 | B-22 | **Seed script** — ~30 users, populated hexes and spots around the venue, a competitive board | `supabase/seed/demo.sql` | J1 | Day 6 |
 | B-23 | **One-command reset to a clean demo state** | `scripts/reset-demo.sh` | J3 | Day 6 |
+| B-26 | **Demo-board routing (server-side)** — sessions from allowlisted demo accounts route to the isolated demo board. Mocked GPS is rejected for production accounts; a demo account is permitted only the fixed server-authorized demo location and seeded Spot, substituted server-side. Authorization is never derived from Evidence fields, build flags, or client-side toggles | `supabase/functions/`, server config | J7 | Day 6 |
 
 **B does not build:** any widget. B's deliverable to C is always an endpoint plus a typed model.
 
@@ -103,7 +104,7 @@ This costs about ten minutes a day and buys you the ability to merge without rea
 | C-3 | State-management convention, decided and written down | `docs/api-contract.md` §state, `lib/core/` | §8 | **Day 1 — with A and B in the room** |
 | C-4 | Map screen — `flutter_map`, hex polygons by owner, spot pins overlaid, 500+ cells without jank | `lib/features/territory/ui/map_screen.dart` | D1, N2 | Day 1 (fake) → Day 3 (live) |
 | C-5 | Hex detail sheet — owner, power, your power, spots inside, recent flips | `lib/features/territory/ui/hex_sheet.dart` | D6 | Day 2 |
-| C-6 | Session summary screen — reps, RepScore, form grade, PR, tier progress, manual ± correction | `lib/features/session/ui/summary_screen.dart` | B9, B8 | Day 2 |
+| C-6 | Session summary screen — reps, RepScore, form grade, PR, tier progress, manual ± correction (**local-only UI annotation — never transmitted**) | `lib/features/session/ui/summary_screen.dart` | B9, B8 | Day 2 |
 | C-7 | Profile and progression UI — XP, level, streak, the variation tree | `lib/features/progression/ui/` | A2, F1–F3 | Day 4 |
 | C-8 | Spot screens — discovery, check-in, create-a-spot, detail, standing board tabs | `lib/features/spots/ui/` | E1–E4 | Day 4 |
 | C-9 | Territory leaderboard | `lib/features/territory/ui/leaderboard.dart` | D7 | Day 4 |
@@ -111,7 +112,7 @@ This costs about ten minutes a day and buys you the ability to merge without rea
 | C-11 | Push notification handling plus permission priming screens | `lib/features/notifications/`, `lib/app/priming/` | H1, N8 | Day 5 |
 | C-12 | Empty states, error states, **the GPS-accuracy explanation** (D4 must read as a reason, not a failure) | `lib/shared/states/` | D4, N11 | Day 5 |
 | C-13 | Offline submit queue UI plus flush-on-reconnect | `lib/features/session/queue/` | C5, N11 | Day 5 |
-| C-14 | **Mock-location / demo-mode build flag** — pins GPS to a chosen hex and spot | `lib/core/demo_mode.dart` | J2 | Day 6 |
+| C-14 | **Mock-location build flag** — may support local staging UI, but must not choose or influence the server-side demo territory context: the server permits only a fixed server-authorized demo location and seeded Spot against the isolated demo board (B-26/J7), and mocked-location submissions from production accounts are rejected | `lib/core/demo_mode.dart` | J2 | Day 6 |
 | C-15 | **Written demo script** | `docs/demo-script.md` | J4 | Day 6 |
 | C-16 | Crash and error reporting visible to the team on demo day | `lib/core/telemetry/` | J5 | Day 6 |
 | C-17 | Runs the rehearsals — three clean run-throughs minimum | — | J4 | **Day 7** |
@@ -201,7 +202,7 @@ Read it as a hub, not a chain. **Evidence is the only thing that crosses a track
 
 - **A never touches the rest of the system.** No hexes, no spots, no decay, no boards, no API calls. A's entire contract with the world is one object shape.
 - **B builds scoring before A produces anything real.** Hand-author `evidence.json` (B-24), run it through the scoring service, check the arithmetic. B's Day 2 does not wait on A's Day 2.
-- **The Day-2 fallback costs nothing downstream.** If camera counting fails the gate, manual entry emits the same Evidence with different provenance. B and C never notice — only the input UI changes.
+- **The Day-2 fallback costs nothing downstream.** If camera counting fails the gate, the camera is demoted to a form-check showpiece and the demo ships whichever movements pass — Slice 1 (squat) first. The Evidence → server → ledger loop is not coupled to any particular movement or input path, so B and C never notice.
 
 **B owns the shape; A owns filling it. Frozen end of Day 1**, alongside the API contract — it has to exist before anyone writes code against it, and every track writes code against it on Day 2.
 
@@ -241,8 +242,8 @@ Endpoint register — B creates, C consumes:
 
 | Endpoint | Returns | Consumed by |
 |---|---|---|
-| `POST /session/start` | session id, server start time, hex index, spot context, expiry | A (starts it), C (shows context) |
-| `POST /session/submit` | **everything in one response** — XP, level, hex result, spot result, rank change, unlocks, PRs, achievements (C4) | C-6 summary screen |
+| `POST /session/start` | session id, server start time, **`movementConfigVersion`**, hex index, spot context, expiry | A (starts it), C (shows context) |
+| `POST /session/submit` | **everything in one response** — XP, level, hex result, spot result, rank change, unlocks, PRs, achievements (C4). **Rejects `movementConfigVersion` mismatch and `SESSION_CONTEXT_MISMATCH`** (territory always resolves from the session-start context) | C-6 summary screen |
 | `GET /territory/hexes?bbox=` | polygons plus owner and power (plain coords — no H3 on the client) | C-4 map |
 | `GET /territory/hex/:h3` | owner, power, your power, spots inside, recent flips | C-5 sheet |
 | `GET /territory/leaderboard` | hexes held, total area | C-9 |
@@ -321,7 +322,7 @@ Ambiguity about who decides costs more than any wrong decision this week.
 
 | Trigger | Reassignment |
 |---|---|
-| **Day-2 gate fails** | A builds manual rep entry in half a day, then **becomes a second Surface dev under C's direction**. B and C are structurally unaffected — manual entry emits the same Evidence with different provenance (§4 Seam 1), so only the input UI changes. This is the whole point of the seam |
+| **Day-2 gate fails** | The camera is demoted to a "form check" showpiece and the demo ships with whichever movements pass the gate — Slice 1 (squat) first. **There is no manual scoring path** — self-reported activity is diary-only with zero competitive consequences. **B and C are structurally unaffected**: the Evidence → server → ledger loop is not coupled to any particular movement, so only the capture UI changes. A then **becomes a second Surface dev under C's direction**. Decide at the gate; don't drift |
 | **Camera → `InputImage` not solved by end of Day 1** | Escalate that evening. All three on it Day 2 morning if needed. **Do not let it bleed silently into Day 2** |
 | **A finishes early (Day 4+)** | A takes work off whichever track is behind — C first by default, since surface work is the most parallelisable |
 | **B is behind on Day 3** | C keeps building against stubs rather than idling. Stubs are the pressure valve — that's what they're for |
