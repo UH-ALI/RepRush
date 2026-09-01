@@ -10,6 +10,7 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
@@ -19,6 +20,7 @@ import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
+import 'package:reprush/features/capture/ui/debug_panel.dart';
 import 'package:reprush/features/capture/ui/skeleton_overlay.dart';
 
 class CapturePreviewScreen extends ConsumerStatefulWidget {
@@ -145,6 +147,12 @@ class _PreviewStack extends ConsumerWidget {
             label: Text('${status.fps} fps'),
           ),
         ),
+        if (kDebugMode)
+          const Positioned(
+            top: RepRushTokens.spaceSm,
+            right: RepRushTokens.spaceSm,
+            child: CaptureDebugPanel(),
+          ),
         ValueListenableBuilder<PipelineFrame?>(
           valueListenable: ref.watch(pipelineFramesProvider),
           builder: (context, pipelineFrame, _) {
@@ -259,8 +267,40 @@ class _PipelineHudState extends State<_PipelineHud> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('Stand still — calibrating'),
+                  const SizedBox(height: RepRushTokens.spaceXs),
+                  // Placement guidance up front: most bad calibrations are
+                  // an off-axis camera or bent knees, not a code bug.
+                  const Text(
+                    'Stand side-on, straighten legs, keep full body in frame',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
                   const SizedBox(height: RepRushTokens.spaceSm),
-                  LinearProgressIndicator(value: frame.calibrationProgress),
+                  if (frame.calibrationRejection case final reason?)
+                    // A rejected attempt re-collects automatically — say
+                    // why and what to fix (N9: icon + text + colour).
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.warning_amber,
+                          size: 16,
+                          color: RepRushTokens.feedbackAmber,
+                        ),
+                        const SizedBox(width: RepRushTokens.spaceXs),
+                        Flexible(
+                          child: Text(
+                            calibrationRejectionMessage(reason),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: RepRushTokens.feedbackAmber,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    LinearProgressIndicator(value: frame.calibrationProgress),
                 ],
               ),
             ),

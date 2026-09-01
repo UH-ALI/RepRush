@@ -19,6 +19,7 @@ import 'package:reprush/features/capture/camera/pose_service.dart';
 import 'package:reprush/features/capture/camera/squat_landmarks.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
+import 'package:reprush/features/capture/pipeline/pipeline_trace_recorder.dart';
 import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/trace_recorder.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
@@ -105,6 +106,12 @@ class CaptureController extends Notifier<CaptureStatus> {
   PoseService? _pose;
   SquatPipeline? _pipeline;
   TraceRecorder? _traceRecorder;
+
+  /// Debug-only pipeline diagnostics (angles, phase, thresholds, side,
+  /// per-joint likelihoods, dt) — the tuning-evidence log. Release builds
+  /// never allocate it; its content never enters Evidence.
+  PipelineTraceRecorder? _diagRecorder;
+
   bool _starting = false;
   bool _streaming = false;
   int _missStreak = 0;
@@ -132,13 +139,25 @@ class CaptureController extends Notifier<CaptureStatus> {
     _pipeline = SquatPipeline(config);
     // Debug-only fixture capture — release builds never allocate it.
     _traceRecorder = kDebugMode ? TraceRecorder() : null;
+    _diagRecorder = kDebugMode ? PipelineTraceRecorder() : null;
     pipelineFrames.value = null;
   }
 
   /// Freezes calibration thresholds once enough rest samples exist. The
   /// pump auto-finalizes on the sample-count edge; the UI can also call
-  /// this explicitly.
+  /// this explicitly. Returns false when the attempt was rejected — the
+  /// pipeline has already cleared the window for a retry and the reason
+  /// is on the next [PipelineFrame].
   bool finalizeCalibration() => _pipeline?.finalizeCalibration() ?? false;
+
+  /// Manual recalibration (debug panel): back to CALIBRATING with a fresh
+  /// sample window, machine, counts, and side state cleared.
+  void recalibrate() {
+    final pipeline = _pipeline;
+    if (pipeline == null) return;
+    pipeline.reset();
+    pipelineFrames.value = null;
+  }
 
   /// Ends the session. Debug traces are exported to the log so they can be
   /// pulled and committed as replay fixtures (never uploaded — §evidence).
@@ -150,15 +169,43 @@ class CaptureController extends Notifier<CaptureStatus> {
         'export via debugTraceJson() to build a replay fixture.',
       );
     }
+    final diag = _diagRecorder;
+    if (diag != null && diag.entryCount > 0) {
+      debugPrint(
+        'RepRush diagnostics: ${diag.entryCount} entries recorded — '
+        'export via exportDiagnosticsToLog() to pull tuning evidence.',
+      );
+    }
     _pipeline?.reset();
     _pipeline = null;
     _traceRecorder = null;
+    _diagRecorder = null;
     pipelineFrames.value = null;
   }
 
   /// Fixture JSON for the current debug session (null outside debug or
   /// with no frames). Strictly local — never submitted with Evidence.
   String? debugTraceJson() => _traceRecorder?.exportJson();
+
+  /// Diagnostics JSON for the current debug session (null outside debug
+  /// or with no entries). Strictly local — never submitted with Evidence.
+  String? debugDiagnosticsJson() => _diagRecorder?.exportJson();
+
+  /// Prints the diagnostics JSON to the log in logcat-safe chunks so it
+  /// can be pulled with `adb logcat | grep RepRushDiag`. Returns the
+  /// number of entries exported (0 outside debug builds).
+  int exportDiagnosticsToLog() {
+    final json = _diagRecorder?.exportJson();
+    if (json == null) return 0;
+    const chunkSize = 1000;
+    final chunks = (json.length / chunkSize).ceil();
+    for (var i = 0; i < chunks; i += 1) {
+      final start = i * chunkSize;
+      final end = (start + chunkSize).clamp(0, json.length);
+      debugPrint('RepRushDiag ${i + 1}/$chunks: ${json.substring(start, end)}');
+    }
+    return _diagRecorder?.entryCount ?? 0;
+  }
 
   /// Opens the rear camera and starts the frame → inference pump. Idempotent
   /// while streaming or already starting.
@@ -344,6 +391,15 @@ class CaptureController extends Notifier<CaptureStatus> {
     CameraImage image,
     int? degrees,
   ) {
+    // Rotated image dimensions — the pipeline's frame-bounds check treats
+    // out-of-bounds landmarks (stale ML Kit extrapolations after the
+    // athlete exits frame) as unusable regardless of likelihood.
+    final rotated = degrees == null
+        ? null
+        : rotatedImageSize(
+            Size(image.width.toDouble(), image.height.toDouble()),
+            degrees,
+          );
     final landmarkFrame = LandmarkFrame(
       landmarks: {
         if (pose != null)
@@ -355,14 +411,24 @@ class CaptureController extends Notifier<CaptureStatus> {
             ),
       },
       timestampMs: DateTime.now().millisecondsSinceEpoch,
+      imageWidth: rotated?.width,
+      imageHeight: rotated?.height,
     );
     _traceRecorder?.record(landmarkFrame);
 
     final result = pipeline.tick(landmarkFrame);
+    _diagRecorder?.recordTick(frame: landmarkFrame, result: result);
     pipelineFrames.value = result;
-    // Auto-finalize on the sample-count edge (~2 s of steady standing).
+    // Auto-finalize on the sample-count edge (~2 s of steady standing). A
+    // rejection clears the window inside the pipeline and re-collects; the
+    // outcome — accepted AND rejected — goes to the diagnostics trace so
+    // the rejection evidence survives the clearing.
     if (pipeline.calibrating && pipeline.hasEnoughCalibrationSamples) {
       pipeline.finalizeCalibration();
+      final outcome = pipeline.lastCalibrationOutcome;
+      if (outcome != null) {
+        _diagRecorder?.recordCalibration(outcome);
+      }
     }
 
     PoseFrame? drawable;

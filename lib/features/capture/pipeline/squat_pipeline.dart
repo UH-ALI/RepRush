@@ -27,6 +27,12 @@ class PipelineFrame {
     required this.calibrating,
     required this.selectedSide,
     required this.calibrationProgress,
+    this.calibration,
+    this.leftVisibility,
+    this.rightVisibility,
+    this.sideSwitched = false,
+    this.lostStreak = 0,
+    this.calibrationRejection,
   });
 
   final int repCount;
@@ -45,6 +51,28 @@ class PipelineFrame {
 
   /// 0.0 → 1.0 while calibrating, 1.0 once counting.
   final double calibrationProgress;
+
+  /// Frozen thresholds once calibration is accepted — rest angle plus the
+  /// four gates. Null while calibrating. Debug-panel + diagnostics only;
+  /// never serialized into Evidence.
+  final CalibrationResult? calibration;
+
+  /// Min-of-chain in-frame visibility per side (null = chain incomplete).
+  /// Both sides are reported so a noisy-but-present chain shows up as low
+  /// likelihood instead of hiding inside the selector.
+  final double? leftVisibility;
+  final double? rightVisibility;
+
+  /// True on the frame the sticky selector switched sides.
+  final bool sideSwitched;
+
+  /// Sustained unusable frames — decays by one per usable frame, so a
+  /// single spurious pass-through does not wipe the loss evidence.
+  final int lostStreak;
+
+  /// Why the last calibration attempt was rejected — drives the retry
+  /// messaging while samples re-collect. Null after an accepted attempt.
+  final CalibrationRejectionReason? calibrationRejection;
 }
 
 /// Two-phase pipeline: CALIBRATING (collect rest samples) then COUNTING.
@@ -56,7 +84,7 @@ class SquatPipeline {
   /// Sustained unusable frames before the red "Tracking lost" cue fires.
   static const int _lostAfterFrames = 3;
 
-  /// Calibration window (~2 s at 15 fps); [CalibrationCapture.finalize]
+  /// Calibration window (~2 s at 15 fps); [CalibrationCapture.attemptFinalize]
   /// still enforces its own minimum.
   static const int _calibrationFrames = 30;
 
@@ -68,16 +96,40 @@ class SquatPipeline {
   bool _calibrating = true;
   int _lostStreak = 0;
 
+  /// Sticky side selection state — hysteresis against per-frame flicker.
+  String? _currentSide;
+
+  /// Frozen thresholds once calibration is accepted.
+  CalibrationResult? _calibrationResult;
+
+  /// Why the last finalize attempt was rejected (null after acceptance).
+  CalibrationRejectionReason? _lastRejection;
+
+  /// The outcome of the most recent finalize attempt — the controller
+  /// forwards it to the diagnostics trace (accepted AND rejected).
+  CalibrationOutcome? lastCalibrationOutcome;
+
   int get repCount => _machine?.repCount ?? 0;
   int get shallowAttemptCount => _machine?.shallowAttemptCount ?? 0;
   bool get calibrating => _calibrating;
   int get calibrationSampleCount => _calibration.sampleCount;
+  CalibrationResult? get calibration => _calibrationResult;
 
   /// Processes one frame. A null side selection clears everything drawable
   /// downstream — the controller maps `selectedSide == null` to a null
   /// overlay frame, so no stale skeleton survives tracking loss.
   PipelineFrame tick(LandmarkFrame frame) {
-    final selected = selectBetterSide(frame.landmarks);
+    final vis = sideVisibilities(
+      frame.landmarks,
+      imageWidth: frame.imageWidth,
+      imageHeight: frame.imageHeight,
+    );
+    final selected = stickySelectSide(
+      frame.landmarks,
+      currentSide: _currentSide,
+      imageWidth: frame.imageWidth,
+      imageHeight: frame.imageHeight,
+    );
     if (selected == null) {
       _lostStreak += 1;
       final machine = _machine;
@@ -113,10 +165,20 @@ class SquatPipeline {
         calibrating: _calibrating,
         selectedSide: null,
         calibrationProgress: _progress(),
+        calibration: _calibrationResult,
+        leftVisibility: vis.left,
+        rightVisibility: vis.right,
+        lostStreak: _lostStreak,
+        calibrationRejection: _lastRejection,
       );
     }
 
-    _lostStreak = 0;
+    final sideSwitched = _currentSide != null && selected.side != _currentSide;
+    _currentSide = selected.side;
+    // Decay, not hard-reset: one spurious usable frame (stale landmarks
+    // skimming the visibility floor) must not wipe the evidence of
+    // sustained loss — the "Tracking lost" cue would fire inconsistently.
+    if (_lostStreak > 0) _lostStreak -= 1;
     final raw = kneeAngle(selected.hip, selected.knee, selected.ankle);
     final smoothed = _ema.update(raw);
 
@@ -137,6 +199,12 @@ class SquatPipeline {
         calibrating: true,
         selectedSide: selected.side,
         calibrationProgress: _progress(),
+        calibration: _calibrationResult,
+        leftVisibility: vis.left,
+        rightVisibility: vis.right,
+        sideSwitched: sideSwitched,
+        lostStreak: _lostStreak,
+        calibrationRejection: _lastRejection,
       );
     }
 
@@ -165,18 +233,38 @@ class SquatPipeline {
       calibrating: false,
       selectedSide: selected.side,
       calibrationProgress: 1,
+      calibration: _calibrationResult,
+      leftVisibility: vis.left,
+      rightVisibility: vis.right,
+      sideSwitched: sideSwitched,
+      lostStreak: _lostStreak,
+      calibrationRejection: _lastRejection,
     );
   }
 
   /// Freezes thresholds and enters the counting phase. Returns false when
-  /// not enough samples were collected — the caller stays in calibrating
-  /// and keeps collecting.
+  /// the attempt was rejected or not enough samples were collected — the
+  /// caller stays in calibrating. A stability/plausibility rejection
+  /// clears the sample window (a bad window never recovers by collecting
+  /// more bad samples); a too-few-samples rejection keeps collecting.
+  /// The full outcome is available via [lastCalibrationOutcome].
   bool finalizeCalibration({int minSamples = 10}) {
-    final result = _calibration.finalize(minSamples: minSamples);
-    if (result == null) return false;
-    _machine = RepMachine(result, config);
-    _calibrating = false;
-    return true;
+    final outcome = _calibration.attemptFinalize(minSamples: minSamples);
+    lastCalibrationOutcome = outcome;
+    switch (outcome) {
+      case CalibrationAccepted(:final result):
+        _calibrationResult = result;
+        _machine = RepMachine(result, config);
+        _calibrating = false;
+        _lastRejection = null;
+        return true;
+      case CalibrationRejected(:final reason):
+        _lastRejection = reason;
+        if (reason != CalibrationRejectionReason.tooFewSamples) {
+          _calibration.reset();
+        }
+        return false;
+    }
   }
 
   /// Whether enough samples have accumulated for [finalizeCalibration] to
@@ -191,6 +279,10 @@ class SquatPipeline {
     _calibration.reset();
     _debouncer.reset();
     _lostStreak = 0;
+    _currentSide = null;
+    _calibrationResult = null;
+    _lastRejection = null;
+    lastCalibrationOutcome = null;
   }
 
   double _progress() {

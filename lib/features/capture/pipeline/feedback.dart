@@ -5,6 +5,7 @@
 /// Ownership: A. Purity rule: plain Dart only.
 library;
 
+import 'package:reprush/features/capture/pipeline/calibration.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
@@ -81,6 +82,20 @@ FeedbackSnapshot evaluateFeedback({
       cue: 'Stand tall',
       activeSide: activeSide,
     ),
+  };
+}
+
+/// Retry messaging for rejected calibration attempts — shown while the
+/// sample window re-collects. Pure so it stays testable alongside the
+/// rest of the feedback logic.
+String calibrationRejectionMessage(CalibrationRejectionReason reason) {
+  return switch (reason) {
+    CalibrationRejectionReason.tooFewSamples =>
+      'Not enough steady frames yet — hold your position',
+    CalibrationRejectionReason.unstableRest =>
+      'Too much movement — stand still while we retry',
+    CalibrationRejectionReason.implausibleRest =>
+      'Stand side-on, straighten your legs, keep full body in frame — retrying',
   };
 }
 
