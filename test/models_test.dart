@@ -30,20 +30,20 @@ import 'package:reprush/models/models.dart';
 const _startJson =
     '{"sessionId":"00000000-0000-4000-8000-000000000001",'
     '"serverStartMs":1757000000000,"movementConfigVersion":"2026-08-30.1",'
-    '"hexH3":"8a2a1072b59ffff","spotId":"spot_riverside_rig",'
+    '"hexH3":"88195da49bfffff","spotId":"spot_riverside_rig",'
     '"expiresAtMs":1757014400000}';
 
 /// `POST /session/submit` for fixture `squat_20_clean`, prior lifetime XP 0.
 const _submitCleanJson =
     '{"xp":20,"level":1,"levelUps":[],'
-    '"hexResult":{"h3":"8a2a1072b59ffff","captured":true,"power":19.63992,'
+    '"hexResult":{"h3":"88195da49bfffff","captured":true,"power":19.63992,'
     '"yourPower":19.63992},"spotResult":null,"rankChange":null,'
     '"unlocks":[],"prs":[],"achievements":[],"voided":false}';
 
 /// The same fixture with prior lifetime XP 240, so a level is crossed.
 const _submitLevelUpJson =
     '{"xp":20,"level":2,"levelUps":[2],'
-    '"hexResult":{"h3":"8a2a1072b59ffff","captured":true,"power":19.63992,'
+    '"hexResult":{"h3":"88195da49bfffff","captured":true,"power":19.63992,'
     '"yourPower":19.63992},"spotResult":null,"rankChange":null,'
     '"unlocks":[],"prs":[],"achievements":[],"voided":false}';
 
@@ -59,14 +59,14 @@ const _submitNothingJson =
 /// numeric field in models.dart goes through `_asDouble` instead of a cast.
 const _submitIntegralJson =
     '{"xp":6,"level":1,"levelUps":[],'
-    '"hexResult":{"h3":"8a2a1072b59ffff","captured":true,"power":6,'
+    '"hexResult":{"h3":"88195da49bfffff","captured":true,"power":6,'
     '"yourPower":6},"spotResult":null,"rankChange":null,'
     '"unlocks":[],"prs":[],"achievements":[],"voided":false}';
 
 /// A capture at a named spot, so `spotResult` is populated.
 const _submitSpotJson =
     '{"xp":20,"level":1,"levelUps":[],'
-    '"hexResult":{"h3":"8a2a1072b59ffff","captured":true,"power":19.63992,'
+    '"hexResult":{"h3":"88195da49bfffff","captured":true,"power":19.63992,'
     '"yourPower":19.63992},'
     '"spotResult":{"spotId":"spot_riverside_rig","captured":true,"rank":1},'
     '"rankChange":null,"unlocks":[],"prs":[],"achievements":[],"voided":false}';
@@ -132,7 +132,7 @@ void main() {
 
       final hex = result.hexResult;
       expect(hex, isNotNull);
-      expect(hex!.h3, '8a2a1072b59ffff');
+      expect(hex!.h3, '88195da49bfffff');
       expect(hex.captured, isTrue);
       expect(hex.power, 19.63992);
       expect(hex.yourPower, 19.63992);
@@ -232,7 +232,7 @@ void main() {
       expect(start.sessionId, '00000000-0000-4000-8000-000000000001');
       expect(start.serverStartMs, 1757000000000);
       expect(start.movementConfigVersion, '2026-08-30.1');
-      expect(start.hexH3, '8a2a1072b59ffff');
+      expect(start.hexH3, '88195da49bfffff');
       expect(start.spotId, 'spot_riverside_rig');
       expect(start.expiresAtMs, 1757014400000);
     });
@@ -419,7 +419,7 @@ void main() {
       // type cast", which does not say which of the four numeric fields failed.
       final map = jsonDecode(_submitCleanJson) as Map<String, Object?>
         ..['hexResult'] = <String, Object?>{
-          'h3': '8a2a1072b59ffff',
+          'h3': '88195da49bfffff',
           'captured': true,
           'power': 'lots',
           'yourPower': 1,

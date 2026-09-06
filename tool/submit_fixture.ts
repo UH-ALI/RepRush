@@ -56,6 +56,7 @@ import type { Consequences } from "../supabase/functions/_shared/stubs/consequen
 import type { SessionStartResponse } from "../supabase/functions/_shared/stubs/session-start.ts";
 import type { Evidence } from "../supabase/functions/_shared/evidence/schema.ts";
 import { WALLCLOCK_SLACK_MS } from "../supabase/functions/_shared/validation/wallclock.ts";
+import { round } from "../supabase/functions/_shared/scoring/score.ts";
 
 const FIXTURE_DIR = fileURLToPath(new URL("../test/server/fixtures/", import.meta.url));
 
@@ -104,12 +105,39 @@ interface Options {
   noWait: boolean;
 }
 
+/**
+ * `tool/dev_user.ts` writes the credentials it minted to `supabase/.temp/dev-env.json`.
+ * Reading them back is what turns "prove the DEPLOYED pipeline works" from a
+ * copy-paste-a-470-character-JWT exercise into one command. That matters more than
+ * convenience: a token you have to paste is a token you keep pasting after it
+ * expires, and an expired token reads as a backend failure rather than what it is.
+ *
+ * Explicit flags and env vars still win — this is the fallback of last resort, and
+ * quietly overriding an explicit `--token` would be worse than not having it.
+ * A missing or unreadable file yields `{}`, so the caller still reports the
+ * credential it is actually missing.
+ */
+function devEnv(): { functionsBase?: string; token?: string; anonKey?: string } {
+  try {
+    const path = fileURLToPath(new URL("../supabase/.temp/dev-env.json", import.meta.url));
+    return JSON.parse(readFileSync(path, "utf8")) as {
+      functionsBase?: string;
+      token?: string;
+      anonKey?: string;
+    };
+  } catch {
+    return {};
+  }
+}
+
 function parseOptions(args: string[]): Options {
+  const dev = devEnv();
+  const url = envOf("SUPABASE_URL");
   const opts: Options = {
     fixture: null,
-    base: envOf("SUPABASE_URL") === undefined ? null : `${envOf("SUPABASE_URL")}/functions/v1`,
-    token: envOf("REPRUSH_TOKEN") ?? null,
-    apikey: envOf("SUPABASE_ANON_KEY") ?? null,
+    base: url === undefined ? dev.functionsBase ?? null : `${url}/functions/v1`,
+    token: envOf("REPRUSH_TOKEN") ?? dev.token ?? null,
+    apikey: envOf("SUPABASE_ANON_KEY") ?? dev.anonKey ?? null,
     list: false,
     dryRun: false,
     noWait: false,
@@ -146,6 +174,9 @@ Options
     --base <url>     Functions base. Default: $SUPABASE_URL/functions/v1
     --token <jwt>    A real USER access token. Default: $REPRUSH_TOKEN
     --apikey <key>   Sent as the 'apikey' header. Default: $SUPABASE_ANON_KEY
+
+    All three fall back to supabase/.temp/dev-env.json, which "deno task user"
+    writes. So the usual live run is:  deno task user && deno task submit <fixture>
     --no-wait        Submit immediately instead of waiting out the fixture's
                      authored submit offset. Use this to watch the wall-clock
                      gate reject a fixture that was authored to pass.
@@ -154,8 +185,9 @@ Options
 
 Notes
     The token must resolve through auth.getUser — an anon key is not a user and
-    will 401. Get one from the Flutter app's session or from
-    supabase auth admin:  supabase db ... is not enough on its own.
+    will 401. "deno task user" mints one against the local stack; a 401 here
+    usually means the token in dev-env.json outlived its one-hour expiry, so rerun
+    it rather than debugging the backend.
 
     Each live run consumes one session AND one slot of the 20-per-day budget
     (MAX_SESSIONS_PER_DAY), so the 21st start in a UTC day returns 429.
@@ -348,13 +380,31 @@ function compareToGolden(golden: Golden, call: CallResult): string[] {
   // The territory half is a documented stub, so what is checkable is the
   // relationship the stub asserts: hex power equals the awarded total, and a
   // session that scored nothing claims nothing.
+  //
+  // BOTH SIDES GO THROUGH round(). The golden file stores `round(awardedTotal)`
+  // (golden.ts:210, 6 decimal places) while the live response carries the raw
+  // double, and those are not the same number: 20 reps at formFactor 0.981996 is
+  // 19.639920000000004 on the wire and 19.63992 in the golden. Comparing them
+  // with !== reports a divergence on the very first clean run, which is worse
+  // than not comparing at all — it teaches you to ignore this tool's verdict.
+  // Importing the golden writer's own `round` rather than restating a tolerance
+  // keeps the two policies identical by construction instead of by coincidence.
   const awarded = golden.score!.awardedTotal;
   if (awarded > 0) {
+    const power = body.hexResult === null ? null : round(body.hexResult.power);
+    const yourPower = body.hexResult === null ? null : round(body.hexResult.yourPower);
     if (body.hexResult === null) {
       problems.push(`awarded ${awarded} but hexResult is null — no capture reported`);
-    } else if (body.hexResult.power !== awarded) {
+    } else if (power !== awarded) {
       problems.push(
         `hexResult.power: golden awardedTotal ${awarded}, live ${body.hexResult.power}`,
+      );
+    } else if (yourPower !== awarded) {
+      // consequences.ts documents `power === yourPower` as the visible symptom of
+      // the missing claim table, so it holds exactly until that table lands.
+      problems.push(
+        `hexResult.yourPower: expected ${awarded} (no contest table yet), ` +
+          `live ${body.hexResult.yourPower}`,
       );
     }
   } else if (body.hexResult !== null) {
@@ -435,7 +485,7 @@ async function main(): Promise<void> {
   if (opts.dryRun || opts.base === null || opts.token === null) {
     if (!opts.dryRun) {
       console.log(
-        "\nno --base or --token (set SUPABASE_URL and REPRUSH_TOKEN, or pass them explicitly)",
+        "\nno --base or --token (run `deno task user`, or set SUPABASE_URL and REPRUSH_TOKEN)",
       );
     }
     // Still worth something offline: show exactly what would go on the wire, with

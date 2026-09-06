@@ -68,16 +68,24 @@ export const SESSION_START_MS = Date.UTC(2026, 8, 5, 9, 0, 0);
 export const VENUE = { lat: 51.5074, lng: -0.1278 } as const;
 
 /**
- * Res-8 index for the venue, copied from the Dart stub.
+ * Res-8 index for the venue — the same cell `VENUE.hexH3` carries in
+ * `_shared/stubs/venue.ts` and `DemoVenue.demoHexH3` carries in the Dart stub.
  *
- * ⚠ FABRICATED. `_shared/stubs/venue.ts` carries the same literal and the same
- * warning: it is not the real `latLngToCell` output, because `_shared/h3.ts`
- * imports `npm:h3-js` and cannot run outside Deno. No gate reads it and no score
- * depends on it — it exists so the fixture's session row has the same shape as a
- * real one. Regenerate it with `h3.latLngToCell(51.5074, -0.1278, 8)` the first
- * time the suite runs under Deno.
+ * This literal was fabricated for most of the build, with a note to regenerate it
+ * "the first time the suite runs under Deno", because `_shared/h3.ts` imports
+ * `npm:h3-js` and nothing could execute it. That has now been done: the value is
+ * `latLngToCell(51.5074, -0.1278, 8)`, cross-checked against what the live
+ * `session-start` route returns for the same coordinates.
+ *
+ * Worth recording what the fabrication cost: the invented index was res-10, not
+ * res-8. A made-up hex string does not even reliably land in the resolution you
+ * meant it to, which is the argument for computing one over writing a
+ * plausible-looking one.
+ *
+ * No gate reads it and no score depends on it — it exists so a fixture's session
+ * row has the same shape as a real one.
  */
-export const VENUE_H3 = "8a2a1072b59ffff";
+export const VENUE_H3 = "88195da49bfffff";
 
 export const USER_ID = "11111111-1111-4111-8111-111111111111";
 

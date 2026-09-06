@@ -41,7 +41,7 @@ import {
   checkWallClock,
   WALLCLOCK_SLACK_MS,
 } from "../../supabase/functions/_shared/validation/wallclock.ts";
-import { CONFIG_VERSION } from "./tools/fixtures.ts";
+import { CONFIG_VERSION, VENUE_H3 } from "./tools/fixtures.ts";
 import { deepStrictEqual, ok, strictEqual, test } from "./_harness.ts";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
@@ -70,7 +70,7 @@ function row(overrides: Partial<SessionRow> = {}): SessionRow {
     start_lng: LNG,
     start_accuracy_m: 8,
     start_is_mocked: false,
-    start_h3: "8a2a1072b59ffff",
+    start_h3: VENUE_H3,
     spot_id: null,
     board: "production",
     ...overrides,

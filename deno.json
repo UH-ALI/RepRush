@@ -1,5 +1,6 @@
 {
   "$schema": "https://deno.land/x/deno/cli/schemas/config.json",
+  "nodeModulesDir": "none",
   "compilerOptions": {
     "strict": true,
     "noImplicitAny": true,
@@ -41,6 +42,8 @@
     "submit": "deno run --allow-net --allow-env --allow-read tool/submit_fixture.ts",
     "submit:node": "node tool/submit_fixture.ts",
     "c4": "deno run --allow-read tool/c4_payloads.ts",
-    "c4:node": "node tool/c4_payloads.ts"
+    "c4:node": "node tool/c4_payloads.ts",
+    "user": "deno run --allow-net --allow-env --allow-write tool/dev_user.ts",
+    "user:node": "node tool/dev_user.ts"
   }
 }

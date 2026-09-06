@@ -44,5 +44,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-
+# The Supabase CLI is installed from npm and run with `npx supabase`, so npm puts a
+# node_modules at the repo root. package.json and package-lock.json ARE committed:
+# they pin the CLI version so all three developers get the same one.
+#
+# That directory is also why deno.json sets `nodeModulesDir: "none"`. Without it
+# Deno resolves Node built-ins against this folder, and the server test suite stops
+# running the same way the deployed Edge Runtime does.
 /node_modules/

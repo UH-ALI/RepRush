@@ -4,4 +4,17 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- DEBUG BUILD ONLY. This whole manifest is merged into the debug variant
+         and nothing else; the release build talks to a hosted HTTPS project and
+         keeps Android's cleartext block.
+
+         A local Supabase stack serves plain HTTP on the LAN port, and Android
+         refuses cleartext by default. Without this, `REPRUSH_API=live` fails on
+         the demo phone as an opaque transport error that looks like an auth bug
+         or a dead backend. Track A owns this file; Track B needs the exception to
+         exercise the live repositories on a real device, which is the only place
+         camera capture can be tested.
+    -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

@@ -7,10 +7,10 @@
 ///
 /// Serialization is hand-written `fromJson`/`toJson` per
 /// [backend-scaffolding.md §8](../../docs/backend-scaffolding.md) — codegen is
-/// explicitly ruled out for a seven-day build. Only the session types carry it so
-/// far, because they are the only ones with a server behind them
-/// (`supabase/functions/session-start`, `session-submit`); the `_as*` helpers
-/// below are what the remaining types should reuse rather than reinvent.
+/// explicitly ruled out for a seven-day build. Only the types with a server
+/// behind them carry it: the session pair (`supabase/functions/session-start`,
+/// `session-submit`) and [Movement] (`supabase/functions/movements`). The `_as*`
+/// helpers below are what the remaining types should reuse rather than reinvent.
 /// Round-trip convention, also §8: `fromJson(x).toJson() == x`.
 library;
 
@@ -222,6 +222,28 @@ bool _asBool(Object? json, String field) {
 /// own request echoed back.
 bool _asBoolOr(Object? json, String field, bool fallback) =>
     json == null ? fallback : _asBool(json, field);
+
+/// Resolves a wire string to an enum by its `wireName`.
+///
+/// An unrecognised value throws instead of falling back to a default. The day the
+/// server adds a sixth movement family, a silent default would render it as
+/// whichever enum value happened to be first — and for [Movement] the field that
+/// follows from family is a difficulty multiplier, so the failure is a
+/// scoring-visible lie wearing a rendering-quirk costume. Naming the field and
+/// listing what was acceptable is the version of this you can fix from one log
+/// line.
+T _asEnum<T extends Enum>(
+  Object? json,
+  String field,
+  List<T> values,
+  String Function(T value) wireNameOf,
+) {
+  final name = _asString(json, field);
+  for (final value in values) {
+    if (wireNameOf(value) == name) return value;
+  }
+  throw _bad(field, json, 'one of ${values.map(wireNameOf).join(' | ')}');
+}
 
 // ---------------------------------------------------------------------------
 // Geo — plain coordinates; H3 is computed server-side (requirements.md §8)
@@ -731,6 +753,64 @@ class Movement {
   final MeasurementType measurementType;
   final bool unlocked;
   final int repsTowardNextTier;
+
+  /// Reads one element of the `GET /movements` response.
+  ///
+  /// `difficulty` is what makes `_asDouble` mandatory rather than defensive here.
+  /// The live route emits whole-valued multipliers with no decimal point — `1` for
+  /// `plank`, `push_up` and `squat`, `2` for `archer_push_up`, `3` for `muscle_up`
+  /// — because JSON has one number type and Dart has two. That is FIVE of the
+  /// eighteen rows the catalogue actually ships, so `as double` would not be an
+  /// edge case; it would throw on `plank`, the second row the exercise picker
+  /// renders.
+  ///
+  /// `repsTowardNextTier` is per-user state, not catalogue data: it counts reps
+  /// this athlete has BANKED toward the next tier. The threshold that turns a
+  /// count into an unlock does not exist yet, so the client may render progress
+  /// but must not render a denominator it invents.
+  factory Movement.fromJson(Object? json) {
+    final map = _asMap(json, 'movement');
+    return Movement(
+      id: _asString(map['id'], 'movement.id'),
+      family: _asEnum(
+        map['family'],
+        'movement.family',
+        MovementFamily.values,
+        (value) => value.wireName,
+      ),
+      tier: _asInt(map['tier'], 'movement.tier'),
+      difficulty: _asDouble(map['difficulty'], 'movement.difficulty'),
+      measurementType: _asEnum(
+        map['measurementType'],
+        'movement.measurementType',
+        MeasurementType.values,
+        (value) => value.wireName,
+      ),
+      unlocked: _asBool(map['unlocked'], 'movement.unlocked'),
+      repsTowardNextTier: _asInt(
+        map['repsTowardNextTier'],
+        'movement.repsTowardNextTier',
+      ),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'family': family.wireName,
+    'tier': tier,
+    'difficulty': difficulty,
+    'measurementType': measurementType.wireName,
+    'unlocked': unlocked,
+    'repsTowardNextTier': repsTowardNextTier,
+  };
+
+  /// `GET /movements` answers with a BARE ARRAY — no `{ "movements": [...] }`
+  /// envelope, unlike every other route in the register. Handing the response
+  /// straight to `_asMap` would throw "expected an object, got List", which reads
+  /// like a malformed response when the response is fine and the expectation was
+  /// wrong.
+  static List<Movement> listFromJson(Object? json) =>
+      _asList(json, 'movements').map(Movement.fromJson).toList(growable: false);
 }
 
 // ---------------------------------------------------------------------------

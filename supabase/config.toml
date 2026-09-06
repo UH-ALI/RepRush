@@ -26,6 +26,31 @@ enabled = true
 port = 54323
 
 # ---------------------------------------------------------------------------
+# Auth — anonymous sign-in is ON, because the guest path is a contract promise.
+# ---------------------------------------------------------------------------
+# api-contract.md §Common rules: "every endpoint requires a Supabase auth bearer
+# token; the guest path (A1) issues one too." With this off, `POST /auth/v1/signup`
+# with an empty body returns `422 anonymous_provider_disabled` and a judge hits a
+# signup wall — the one failure the guest-first decision exists to prevent.
+#
+# An earlier comment here claimed this was a dashboard-only GoTrue setting and not
+# a config.toml key. That was wrong, and wrong in the expensive direction: it sent
+# you looking for a UI that does not exist locally. `enable_anonymous_sign_ins` is
+# a first-class key — the CLI's own generated default config ships it (as `false`)
+# — and it reaches the container as GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED.
+#
+# Changing it needs `npx supabase start`, not a request-time reload: the value is
+# baked into the auth container's environment when the CLI creates it.
+#
+# Known cliff, left at its default on purpose: anonymous sign-ins are rate limited
+# to 30/hour/IP. The client reuses its persisted session, so normal use never
+# approaches that, but a loop of fresh installs would. Raise `[auth.rate_limit]
+# anonymous_users` for local dev only if that ever bites — not here, because this
+# file is also what a hosted project deploys from.
+[auth]
+enable_anonymous_sign_ins = true
+
+# ---------------------------------------------------------------------------
 # Edge Functions — verify_jwt is FALSE on every route, deliberately.
 # ---------------------------------------------------------------------------
 # When the runtime verifies the JWT it rejects a bad token with its own bare 401:
@@ -44,8 +69,3 @@ verify_jwt = false
 
 [functions.movements]
 verify_jwt = false
-
-# Anonymous sign-in (A1 / backend-scaffolding.md §5) is a GoTrue provider setting,
-# not a config.toml key: enable it in the dashboard under Auth → Providers. Without
-# it a judge hits a signup wall, which is the one failure the guest-first decision
-# exists to prevent.

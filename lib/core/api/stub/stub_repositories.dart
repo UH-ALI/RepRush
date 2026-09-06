@@ -12,10 +12,18 @@ import 'package:reprush/core/api/repositories.dart';
 import 'package:reprush/models/models.dart';
 
 /// The seeded demo venue — "the north end of the park" (requirements.md §5).
+///
+/// [demoHexH3] is the REAL resolution-8 cell for [lat]/[lng]: computed with h3-js
+/// and cross-checked against what the live `session-start` route returns for the
+/// same coordinates. It replaced a fabricated literal that turned out to be
+/// resolution 10 — an invented index does not even land in the resolution you
+/// meant, which is why this one is computed. It must stay equal to `VENUE.hexH3`
+/// in `supabase/functions/_shared/stubs/venue.ts`; `test/models_test.dart` pins
+/// the two against each other.
 abstract final class DemoVenue {
   static const lat = 51.5074;
   static const lng = -0.1278;
-  static const demoHexH3 = '8a2a1072b59ffff';
+  static const demoHexH3 = '88195da49bfffff';
   static const demoSpotId = 'spot_riverside_rig';
   static const movementConfigVersion = '2026-08-30.1';
   static const sessionId = '00000000-0000-4000-8000-000000000001';
@@ -106,6 +114,13 @@ class StubTerritoryRepository implements TerritoryRepository {
     // ~40 seeded hexes around the venue, mixed ownership. Placeholder
     // rectangular cells on a jittered grid — real H3 boundary polygons come
     // from the server (B-10).
+    //
+    // The ids are placeholders too, and only the `yours` cell is real: bumping
+    // the trailing digits of an index does not walk to a neighbouring cell. They
+    // are still res-8-SHAPED on purpose — a res-10-looking id would render fine
+    // here and then 404 against a live `/territory/hex/:h3`, which is a bug that
+    // only appears on the Day-3 swap. `yours` carries [DemoVenue.demoHexH3] so
+    // the cell the map highlights is one `hexDetail` can actually answer for.
     const rows = 8;
     const cols = 5;
     final dLat = math.max(0.001, (neLat - swLat) / rows);
@@ -126,7 +141,9 @@ class StubTerritoryRepository implements TerritoryRepository {
             : (i % 3 == 0 ? null : _owners[i % _owners.length]);
         cells.add(
           HexCell(
-            h3: '8a2a1072b59${(i + 1).toRadixString(16).padLeft(4, '0')}',
+            h3: yours
+                ? DemoVenue.demoHexH3
+                : '88195da49bf${(i + 1).toRadixString(16).padLeft(4, '0')}',
             polygon: [
               GeoPoint(lat: sw.lat, lng: sw.lng),
               GeoPoint(lat: ne.lat, lng: sw.lng),
