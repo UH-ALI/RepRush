@@ -5,6 +5,8 @@
 /// Ownership: A. Purity rule: plain Dart only.
 library;
 
+import 'dart:math' as math;
+
 import 'package:reprush/features/capture/pipeline/angle_math.dart';
 import 'package:reprush/features/capture/pipeline/calibration.dart';
 import 'package:reprush/features/capture/pipeline/ema_filter.dart';
@@ -113,6 +115,13 @@ class SquatPipeline {
   int get shallowAttemptCount => _machine?.shallowAttemptCount ?? 0;
   bool get calibrating => _calibrating;
   int get calibrationSampleCount => _calibration.sampleCount;
+
+  /// Diagnostic: torso pixel samples collected during calibration.
+  int get calibrationTorsoSampleCount => _calibration.torsoSampleCount;
+
+  /// Diagnostic: shoulder-width pixel samples collected during calibration.
+  int get calibrationShoulderSampleCount => _calibration.shoulderSampleCount;
+
   CalibrationResult? get calibration => _calibrationResult;
 
   /// Processes one frame. A null side selection clears everything drawable
@@ -183,7 +192,34 @@ class SquatPipeline {
     final smoothed = _ema.update(raw);
 
     if (_calibrating) {
-      _calibration.addSample(kneeAngle: smoothed);
+      // Pixel scale refs for Evidence calibration — torso length from
+      // shoulder to ipsilateral hip, shoulder width from left to right
+      // shoulder. Null when landmarks are missing or the source has no
+      // image dimensions (synthetic fixtures).
+      final shoulder = frame.landmarks['${selected.side}Shoulder'];
+      final oppositeSide = selected.side == 'left' ? 'right' : 'left';
+      final oppositeShoulder = frame.landmarks['${oppositeSide}Shoulder'];
+      final torsoLen = shoulder != null
+          ? _pointDistancePx(
+              shoulder,
+              selected.hip,
+              frame.imageWidth,
+              frame.imageHeight,
+            )
+          : null;
+      final shoulderW = (shoulder != null && oppositeShoulder != null)
+          ? _pointDistancePx(
+              shoulder,
+              oppositeShoulder,
+              frame.imageWidth,
+              frame.imageHeight,
+            )
+          : null;
+      _calibration.addSample(
+        kneeAngle: smoothed,
+        torsoLengthPx: torsoLen,
+        shoulderWidthPx: shoulderW,
+      );
       return PipelineFrame(
         repCount: 0,
         shallowAttemptCount: 0,
@@ -289,5 +325,14 @@ class SquatPipeline {
     if (!_calibrating) return 1;
     final p = _calibration.sampleCount / _calibrationFrames;
     return p > 1 ? 1 : p;
+  }
+
+  /// Pixel-space distance between two landmarks — null when the source
+  /// frame has no dimensions (synthetic fixtures).
+  static double? _pointDistancePx(Lm a, Lm b, double? w, double? h) {
+    if (w == null || h == null) return null;
+    final dx = (a.x - b.x) * w;
+    final dy = (a.y - b.y) * h;
+    return math.sqrt(dx * dx + dy * dy);
   }
 }

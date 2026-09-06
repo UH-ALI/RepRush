@@ -45,6 +45,8 @@ class CalibrationResult {
     required this.enterPeak,
     required this.enterRest,
     required this.romTarget,
+    this.torsoLengthPx,
+    this.shoulderWidthPx,
   });
 
   /// Median rest-pose knee angle (≈175° standing for squat).
@@ -61,6 +63,16 @@ class CalibrationResult {
 
   /// Full ROM target: `restSignal + romTargetOffset`.
   final double romTarget;
+
+  /// Median pixel distance from shoulder to ipsilateral hip during the
+  /// calibration window. Null when landmarks were not available (e.g. missing
+  /// shoulder in the frame). Evidence requires this in [1, 100000].
+  final double? torsoLengthPx;
+
+  /// Median pixel distance from left shoulder to right shoulder during the
+  /// calibration window. Null when both shoulders were not visible (e.g.
+  /// strict side-on stance). Evidence requires this in [1, 100000].
+  final double? shoulderWidthPx;
 }
 
 /// Why a calibration attempt was rejected — drives the retry messaging.
@@ -100,12 +112,34 @@ class CalibrationCapture {
   final MovementConfig config;
 
   final List<double> _samples = [];
+  final List<double> _torsoLengths = [];
+  final List<double> _shoulderWidths = [];
 
   /// Samples collected so far — drives the calibration progress bar.
   int get sampleCount => _samples.length;
 
-  void addSample({required double kneeAngle}) {
+  /// Diagnostic: how many torso-length pixel samples survived the guard.
+  int get torsoSampleCount => _torsoLengths.length;
+
+  /// Diagnostic: how many shoulder-width pixel samples survived the guard.
+  int get shoulderSampleCount => _shoulderWidths.length;
+
+  void addSample({
+    required double kneeAngle,
+    double? torsoLengthPx,
+    double? shoulderWidthPx,
+  }) {
     _samples.add(kneeAngle);
+    if (torsoLengthPx != null &&
+        torsoLengthPx.isFinite &&
+        torsoLengthPx > 0) {
+      _torsoLengths.add(torsoLengthPx);
+    }
+    if (shoulderWidthPx != null &&
+        shoulderWidthPx.isFinite &&
+        shoulderWidthPx > 0) {
+      _shoulderWidths.add(shoulderWidthPx);
+    }
   }
 
   /// Validates the collected samples and, when they pass, freezes
@@ -145,12 +179,18 @@ class CalibrationCapture {
         enterPeak: median + config.enterPeakOffset,
         enterRest: median + config.enterRestOffset,
         romTarget: median + config.romTargetOffset,
+        torsoLengthPx: _medianOrNull(_torsoLengths, minSamples: minSamples),
+        shoulderWidthPx: _medianOrNull(_shoulderWidths, minSamples: minSamples),
       ),
       spread: spread,
     );
   }
 
-  void reset() => _samples.clear();
+  void reset() {
+    _samples.clear();
+    _torsoLengths.clear();
+    _shoulderWidths.clear();
+  }
 
   static double _medianOf(List<double> sorted) {
     final mid = sorted.length ~/ 2;
@@ -169,5 +209,13 @@ class CalibrationCapture {
         .floor()
         .clamp(0, sorted.length - 1);
     return sorted[hi] - sorted[lo];
+  }
+
+  /// Median of a pixel-distance accumulator — null when fewer than
+  /// [minSamples] observations were collected.
+  static double? _medianOrNull(List<double> values, {required int minSamples}) {
+    if (values.length < minSamples) return null;
+    final sorted = List<double>.of(values)..sort();
+    return _medianOf(sorted);
   }
 }

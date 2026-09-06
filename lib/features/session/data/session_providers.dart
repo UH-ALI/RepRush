@@ -16,7 +16,19 @@ import 'package:reprush/models/models.dart';
 /// server-recorded start context (api-contract.md §session lifecycle).
 class ActiveSessionController extends Notifier<SessionStart?> {
   @override
-  SessionStart? build() => null;
+  SessionStart? build() {
+    _startLocation = null;
+    return null;
+  }
+
+  /// The exact location used in the most recent [start] call — the same
+  /// object the server recorded. Capture needs this for Evidence's
+  /// `location` block (§evidence: must match the session-start fix within
+  /// CONTEXT_MATCH_RADIUS_M).
+  SessionLocation? _startLocation;
+
+  /// Read-only accessor for the retained start location.
+  SessionLocation? get startLocation => _startLocation;
 
   /// `POST /session/start` — opens a session against the demo venue until
   /// real location lands (C1).
@@ -25,6 +37,7 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     final started = await ref
         .read(sessionRepositoryProvider)
         .start(location: venue, spotId: spotId);
+    _startLocation = venue;
     state = started;
     return started;
   }
@@ -36,6 +49,7 @@ class ActiveSessionController extends Notifier<SessionStart?> {
   Future<SubmitResult> submit(Map<String, Object?> evidence) async {
     final result = await ref.read(sessionRepositoryProvider).submit(evidence);
     state = null; // one-shot: submitting consumes the session (I2).
+    _startLocation = null;
     return result;
   }
 }

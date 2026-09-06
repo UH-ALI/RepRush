@@ -10,7 +10,7 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
@@ -22,6 +22,8 @@ import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 import 'package:reprush/features/capture/ui/debug_panel.dart';
 import 'package:reprush/features/capture/ui/skeleton_overlay.dart';
+import 'package:reprush/features/session/data/session_providers.dart';
+import 'package:reprush/models/models.dart';
 
 class CapturePreviewScreen extends ConsumerStatefulWidget {
   const CapturePreviewScreen({super.key});
@@ -34,6 +36,16 @@ class CapturePreviewScreen extends ConsumerStatefulWidget {
 class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
     with WidgetsBindingObserver {
   late final CaptureController _controller;
+
+  /// True between the Finish press and the submit response arriving.
+  /// The button is disabled while this is set so a double-tap cannot
+  /// submit the same one-shot session twice.
+  bool _submitting = false;
+
+  /// Outcome of the last submit attempt — shown inline in the HUD for
+  /// a few seconds. Null = no attempt yet, or the message was cleared.
+  String? _submitMessage;
+  bool _submitSucceeded = false;
 
   @override
   void initState() {
@@ -68,8 +80,78 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // If a set was finished and submitted, the controller's internal
+    // state (pipeline, clock, rep list) can be safely torn down —
+    // finishSet already captured the snapshot. If NOT finished, the
+    // user navigated away mid-session; stop cleans up without losing
+    // a pending submit (the one-shot session survives on the server
+    // either way).
     unawaited(_controller.stop());
     super.dispose();
+  }
+
+  /// Finish → build Evidence → submit through the existing
+  /// [ActiveSessionController.submit] path. The session is consumed on
+  /// success and preserved on failure (so the user can retry).
+  Future<void> _onFinishPressed() async {
+    debugPrint('[Evidence-Diag] >>> _onFinishPressed called');
+    if (_submitting) {
+      debugPrint('[Evidence-Diag] >>> _onFinishPressed: already submitting, skip');
+      return;
+    }
+    final session = ref.read(activeSessionProvider);
+    final location =
+        ref.read(activeSessionProvider.notifier).startLocation;
+    debugPrint('[Evidence-Diag] >>> session=${session != null}, '
+        'location=${location != null}');
+    if (session == null || location == null) {
+      setState(() {
+        _submitMessage = 'Session expired — start a new one.';
+        _submitSucceeded = false;
+      });
+      return;
+    }
+    setState(() => _submitting = true);
+    debugPrint('[Evidence-Diag] >>> calling CaptureController.finishSet()');
+    final evidence = _controller.finishSet(
+      session: session,
+      location: location,
+    );
+    debugPrint('[Evidence-Diag] >>> finishSet returned '
+        '${evidence != null ? "OK" : "NULL"}');
+    if (evidence == null) {
+      final diag = _controller.lastFinishDiagnostic;
+      setState(() {
+        _submitting = false;
+        _submitMessage = diag.isNotEmpty ? diag : 'Evidence incomplete.';
+        _submitSucceeded = false;
+      });
+      return;
+    }
+    try {
+      final result = await ref
+          .read(activeSessionProvider.notifier)
+          .submit(evidence);
+      // Success: tear down the capture session. The one-shot is
+      // consumed server-side.
+      await _controller.stop();
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _submitMessage =
+            '+${result.xp} XP — ${result.achievements.join(", ")}';
+        _submitSucceeded = true;
+      });
+    } on ApiException catch (e) {
+      // Failure: the session is preserved for retry (server does
+      // not consume on reject). Show the contract error.
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _submitMessage = '${e.code}: ${e.message}';
+        _submitSucceeded = false;
+      });
+    }
   }
 
   @override
@@ -80,7 +162,13 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
       child: ColoredBox(
         color: Colors.black,
         child: switch (status.phase) {
-          CapturePhase.streaming => _PreviewStack(status: status),
+          CapturePhase.streaming => _PreviewStack(
+            status: status,
+            submitting: _submitting,
+            submitMessage: _submitMessage,
+            submitSucceeded: _submitSucceeded,
+            onFinish: _onFinishPressed,
+          ),
           CapturePhase.paused => const _MessageView(
             icon: Icons.pause_circle_outline,
             message: 'Camera paused — return to the app to resume.',
@@ -104,9 +192,19 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
 /// into the box — the same centre-crop transform `imageToViewPoint` applies
 /// to the landmarks, which is what keeps the skeleton on the body.
 class _PreviewStack extends ConsumerWidget {
-  const _PreviewStack({required this.status});
+  const _PreviewStack({
+    required this.status,
+    required this.submitting,
+    required this.onFinish,
+    this.submitMessage,
+    this.submitSucceeded = false,
+  });
 
   final CaptureStatus status;
+  final bool submitting;
+  final String? submitMessage;
+  final bool submitSucceeded;
+  final VoidCallback onFinish;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -159,7 +257,15 @@ class _PreviewStack extends ConsumerWidget {
             // While a session runs, the pipeline's red cue subsumes the
             // legacy tracking-lost banner.
             if (pipelineFrame != null) {
-              return Positioned.fill(child: _PipelineHud(frame: pipelineFrame));
+              return Positioned.fill(
+                child: _PipelineHud(
+                  frame: pipelineFrame,
+                  submitting: submitting,
+                  submitMessage: submitMessage,
+                  submitSucceeded: submitSucceeded,
+                  onFinish: onFinish,
+                ),
+              );
             }
             if (!status.trackingLost) return const SizedBox.shrink();
             return Positioned(
@@ -186,9 +292,19 @@ class _PreviewStack extends ConsumerWidget {
 /// held for a minimum of [_minCueHold] to prevent flicker — complementing
 /// the pipeline's own 3-frame debounce.
 class _PipelineHud extends StatefulWidget {
-  const _PipelineHud({required this.frame});
+  const _PipelineHud({
+    required this.frame,
+    required this.submitting,
+    required this.onFinish,
+    this.submitMessage,
+    this.submitSucceeded = false,
+  });
 
   final PipelineFrame frame;
+  final bool submitting;
+  final String? submitMessage;
+  final bool submitSucceeded;
+  final VoidCallback onFinish;
 
   @override
   State<_PipelineHud> createState() => _PipelineHudState();
@@ -234,6 +350,58 @@ class _PipelineHudState extends State<_PipelineHud> {
     super.dispose();
   }
 
+  /// Opens a centred, full-screen scrollable dialog showing the
+  /// complete diagnostic text.  Temporary instrumentation — remove
+  /// before shipping.
+  void _showDiagnosticDialog(BuildContext context, String diagnostic) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(RepRushTokens.spaceMd),
+        child: Padding(
+          padding: const EdgeInsets.all(RepRushTokens.spaceMd),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Evidence Diagnostic',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: RepRushTokens.feedbackAmber,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.white24),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Text(
+                    diagnostic,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      height: 1.5,
+                      color: RepRushTokens.feedbackAmber,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final frame = widget.frame;
@@ -271,7 +439,7 @@ class _PipelineHudState extends State<_PipelineHud> {
                   // Placement guidance up front: most bad calibrations are
                   // an off-axis camera or bent knees, not a code bug.
                   const Text(
-                    'Stand side-on, straighten legs, keep full body in frame',
+                    'Face the camera, straighten legs, keep full body in frame',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, color: Colors.white70),
                   ),
@@ -312,34 +480,114 @@ class _PipelineHudState extends State<_PipelineHud> {
               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
             ),
           )
-        else ...[
-          // Rep counter — bottom-right, only while counting.
+        else ...[          // Rep counter + Finish button — bottom-right, only while counting.
           Positioned(
             right: RepRushTokens.spaceMd,
             bottom: RepRushTokens.spaceMd,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: RepRushTokens.spaceMd,
-                vertical: RepRushTokens.spaceSm,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(RepRushTokens.cornerChip),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.repeat),
-                  const SizedBox(width: RepRushTokens.spaceSm),
-                  Text(
-                    '${frame.repCount}',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: RepRushTokens.spaceMd,
+                    vertical: RepRushTokens.spaceSm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(
+                      RepRushTokens.cornerChip,
                     ),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.repeat),
+                      const SizedBox(width: RepRushTokens.spaceSm),
+                      Text(
+                        '${frame.repCount}',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: RepRushTokens.spaceSm),
+                // Finish button — enabled only after calibration and
+                // while no submit is in flight.
+                FilledButton.icon(
+                  onPressed: widget.submitting ? null : widget.onFinish,
+                  icon: widget.submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.check),
+                  label: Text(
+                    widget.submitting ? 'Submitting…' : 'Finish',
+                  ),
+                ),
+                // Submit outcome / diagnostic — shown inline after a
+                // press.  On failure the full diagnostic is tappable
+                // and opens in a centred full-screen scrollable dialog.
+                if (widget.submitMessage != null && widget.submitSucceeded)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      top: RepRushTokens.spaceXs,
+                    ),
+                    child: Text(
+                      widget.submitMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: RepRushTokens.brand,
+                      ),
+                    ),
+                  ),
+                if (widget.submitMessage != null && !widget.submitSucceeded)
+                  GestureDetector(
+                    onTap: () => _showDiagnosticDialog(
+                      context,
+                      widget.submitMessage!,
+                    ),
+                    child: Container(
+                      margin: const EdgeInsets.only(
+                        top: RepRushTokens.spaceXs,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: RepRushTokens.spaceSm,
+                        vertical: RepRushTokens.spaceXs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: RepRushTokens.feedbackAmber,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Evidence incomplete — tap for diagnostic',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: RepRushTokens.feedbackAmber,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           // Coaching cue banner — bottom-centre, N9 icon + text + colour.

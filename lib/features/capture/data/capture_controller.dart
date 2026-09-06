@@ -1,7 +1,8 @@
 /// CaptureController — the single funnel for camera frames → landmarks →
-/// preview state (api-contract.md §state rule 3). Rep-event writing joins
-/// this class later with Track A; this milestone is preview only — no
-/// counting, calibration, or Evidence.
+/// preview state (api-contract.md §state rule 3). Sole writer of rep
+/// events (§state rule 3): retains every `justEmitted` into a set-local
+/// list, accumulates frame/dropped counters, and assembles Evidence
+/// through [EvidenceBuilder] on `finishSet`.
 ///
 /// Ownership: A.
 library;
@@ -17,12 +18,15 @@ import 'package:reprush/features/capture/camera/coordinates.dart';
 import 'package:reprush/features/capture/camera/input_image_adapter.dart';
 import 'package:reprush/features/capture/camera/pose_service.dart';
 import 'package:reprush/features/capture/camera/squat_landmarks.dart';
+import 'package:reprush/features/capture/pipeline/evidence.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/pipeline_trace_recorder.dart';
+import 'package:reprush/features/capture/pipeline/rep_machine.dart';
 import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/trace_recorder.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
+import 'package:reprush/models/models.dart';
 
 /// Where the capture flow currently is.
 enum CapturePhase {
@@ -112,12 +116,33 @@ class CaptureController extends Notifier<CaptureStatus> {
   /// never allocate it; its content never enters Evidence.
   PipelineTraceRecorder? _diagRecorder;
 
+  /// Monotonic session clock — the ONLY time source for Evidence
+  /// timestamps (schema.ts: every `*Ms` is an offset from client session
+  /// start). Started in [startSession] (which runs after the
+  /// `/session/start` response has already arrived — the widget mounts
+  /// only when `session != null`). Not `DateTime.now()`, not the
+  /// returned `serverStartMs`, not the rolling FPS window.
+  Stopwatch? _sessionClock;
+
+  /// Completed reps retained for the current set — the single list
+  /// [EvidenceBuilder] consumes. Appended on every `justEmitted`.
+  final List<RepEvent> _repEvents = [];
+
+  /// Set-level capture metrics — accumulated during an active session,
+  /// reset in [startSession], frozen on [finishSet].
+  int _framesTotal = 0;
+  int _framesDropped = 0;
+
   bool _starting = false;
   bool _streaming = false;
   int _missStreak = 0;
   int _inferences = 0;
   int _currentFps = 0;
   Stopwatch? _fpsWindow;
+
+  /// True after the first calibration-frame coordinate-space diagnostic
+  /// has been logged. Temporary instrumentation — remove before shipping.
+  bool _calibDiagLogged = false;
 
   @override
   CaptureStatus build() {
@@ -134,9 +159,19 @@ class CaptureController extends Notifier<CaptureStatus> {
 
   /// Starts a counting session. While the pipeline is null, `_onPoses`
   /// behaves exactly like preview-only mode.
+  ///
+  /// The monotonic [Stopwatch] starts here, which is after the
+  /// `/session/start` response has arrived (the widget mounts only when
+  /// `session != null`). This is what makes every downstream timestamp
+  /// a valid offset rather than an epoch.
   void startSession(MovementConfig config) {
     _pipeline?.reset();
     _pipeline = SquatPipeline(config);
+    _sessionClock = Stopwatch()..start();
+    _repEvents.clear();
+    _framesTotal = 0;
+    _framesDropped = 0;
+    _calibDiagLogged = false;
     // Debug-only fixture capture — release builds never allocate it.
     _traceRecorder = kDebugMode ? TraceRecorder() : null;
     _diagRecorder = kDebugMode ? PipelineTraceRecorder() : null;
@@ -176,6 +211,11 @@ class CaptureController extends Notifier<CaptureStatus> {
         'export via exportDiagnosticsToLog() to pull tuning evidence.',
       );
     }
+    _sessionClock?.stop();
+    _sessionClock = null;
+    _repEvents.clear();
+    _framesTotal = 0;
+    _framesDropped = 0;
     _pipeline?.reset();
     _pipeline = null;
     _traceRecorder = null;
@@ -316,10 +356,15 @@ class CaptureController extends Notifier<CaptureStatus> {
     );
     if (input == null) return;
     // process() returns null for dropped frames (inference busy) —
-    // back-pressure by dropping, never queueing (A-4).
+    // back-pressure by dropping, never queueing (A-4). Count as a
+    // set-level dropped frame when a session is active (Evidence's
+    // framesDropped).
     pose.process(input).then((poses) {
       if (_camera == null || !_streaming) return;
-      if (poses == null) return;
+      if (poses == null) {
+        if (_pipeline != null) _framesDropped += 1;
+        return;
+      }
       _onPoses(
         poses,
         image,
@@ -410,15 +455,60 @@ class CaptureController extends Notifier<CaptureStatus> {
               likelihood: landmark.likelihood,
             ),
       },
-      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      timestampMs: _sessionClock?.elapsedMilliseconds ?? 0,
       imageWidth: rotated?.width,
       imageHeight: rotated?.height,
     );
     _traceRecorder?.record(landmarkFrame);
 
+    // --- Coordinate-space diagnostic: log the FIRST calibration frame's
+    // raw ML Kit values so we can see exactly what position3D.x/y look
+    // like on this device.  Temporary — remove before shipping.
+    if (!_calibDiagLogged && pipeline.calibrating && pose != null) {
+      _calibDiagLogged = true;
+      final ls = pose.landmarks[PoseLandmarkType.leftShoulder];
+      final rs = pose.landmarks[PoseLandmarkType.rightShoulder];
+      final lh = pose.landmarks[PoseLandmarkType.leftHip];
+      final rh = pose.landmarks[PoseLandmarkType.rightHip];
+      debugPrint('[CoordSpace] image: ${image.width}x${image.height}, '
+          'degrees=$degrees, '
+          'rotated: ${rotated?.width}x${rotated?.height}');
+      debugPrint('[CoordSpace] leftShoulder: '
+          'x=${ls?.x}, y=${ls?.y}, z=${ls?.z}, '
+          'likelihood=${ls?.likelihood}');
+      debugPrint('[CoordSpace] rightShoulder: '
+          'x=${rs?.x}, y=${rs?.y}, z=${rs?.z}, '
+          'likelihood=${rs?.likelihood}');
+      debugPrint('[CoordSpace] leftHip: '
+          'x=${lh?.x}, y=${lh?.y}, z=${lh?.z}, '
+          'likelihood=${lh?.likelihood}');
+      debugPrint('[CoordSpace] rightHip: '
+          'x=${rh?.x}, y=${rh?.y}, z=${rh?.z}, '
+          'likelihood=${rh?.likelihood}');
+      if (ls != null && lh != null) {
+        final dx = (ls.x - lh.x);
+        final dy = (ls.y - lh.y);
+        final w = rotated?.width ?? 0;
+        final h = rotated?.height ?? 0;
+        debugPrint('[CoordSpace] torso raw: dx=$dx, dy=$dy');
+        debugPrint('[CoordSpace] torso _pointDistancePx calc: '
+            '(dx*$w)^2 + (dy*$h)^2 = '
+            '${(dx * w).toStringAsFixed(2)}^2 + '
+            '${(dy * h).toStringAsFixed(2)}^2');
+      }
+    }
+
     final result = pipeline.tick(landmarkFrame);
     _diagRecorder?.recordTick(frame: landmarkFrame, result: result);
     pipelineFrames.value = result;
+    // Retain every emitted rep for Evidence assembly — the one-frame
+    // `justEmitted` pulse would otherwise be overwritten on the next
+    // tick and lost. Append-only; EvidenceBuilder reads the snapshot.
+    final emitted = result.justEmitted;
+    if (emitted != null) _repEvents.add(emitted);
+    // Set-level frame counter — Evidence's framesTotal. Every
+    // successful inference during an active session counts.
+    _framesTotal += 1;
     // Auto-finalize on the sample-count edge (~2 s of steady standing). A
     // rejection clears the window inside the pipeline and re-collects; the
     // outcome — accepted AND rejected — goes to the diagnostics trace so
@@ -496,6 +586,115 @@ class CaptureController extends Notifier<CaptureStatus> {
         trackingLost: lost,
       );
     }
+  }
+
+  /// Human-readable diagnostic snapshot from the most recent
+  /// [finishSet] call. Displayed in the UI when Evidence assembly fails
+  /// so the exact failing condition is visible on the phone. Temporary
+  /// instrumentation — remove before shipping.
+  String lastFinishDiagnostic = '';
+
+  /// Finishes the current set: freezes the monotonic clock, snapshots
+  /// the retained reps, capture metrics and calibration, then assembles
+  /// an Evidence map through [EvidenceBuilder].
+  ///
+  /// Returns null when the session is not active, calibration was never
+  /// accepted, or the builder refused (missing/invalid pixel scale refs,
+  /// overlapping reps, etc.). The caller decides what to show the user.
+  ///
+  /// The clock is stopped here — subsequent frames still arrive but
+  /// produce frozen timestamps (the `elapsedMilliseconds` after `stop()`
+  /// is the final value). The caller should then submit through
+  /// [ActiveSessionController.submit] and finally call [stopSession]
+  /// (or navigate away, letting `dispose` clean up).
+  Map<String, Object?>? finishSet({
+    required SessionStart session,
+    required SessionLocation location,
+  }) {
+    final clock = _sessionClock;
+    final pipeline = _pipeline;
+    if (clock == null || pipeline == null) {
+      lastFinishDiagnostic = 'ABORT: clock=${clock != null}, '
+          'pipeline=${pipeline != null}';
+      debugPrint('[Evidence-Diag] $lastFinishDiagnostic');
+      return null;
+    }
+    clock.stop();
+    final setEndMs = clock.elapsedMilliseconds;
+    final calibration = pipeline.calibration;
+    final fpsMean = setEndMs > 0
+        ? _framesTotal * 1000 / setEndMs
+        : 0.0;
+    final diag = StringBuffer()
+      ..writeln('calibrating: ${pipeline.calibrating}')
+      ..writeln('calibration: ${calibration != null ? "present" : "NULL"}')
+      ..writeln('setEndMs: $setEndMs')
+      ..writeln('repEvents: ${_repEvents.length}')
+      ..writeln('framesTotal: $_framesTotal')
+      ..writeln('framesDropped: $_framesDropped')
+      ..writeln('fpsMean: ${fpsMean.toStringAsFixed(1)}')
+      ..writeln('angle samples: ${pipeline.calibrationSampleCount}')
+      ..writeln('torso samples: ${pipeline.calibrationTorsoSampleCount}')
+      ..writeln('shoulder samples: ${pipeline.calibrationShoulderSampleCount}');
+    if (calibration != null) {
+      diag
+        ..writeln('restSignal: ${calibration.restSignal}')
+        ..writeln('torsoLengthPx: ${calibration.torsoLengthPx}')
+        ..writeln('shoulderWidthPx: ${calibration.shoulderWidthPx}');
+    }
+    debugPrint('[Evidence-Diag]\n$diag');
+    if (calibration == null) {
+      lastFinishDiagnostic = '$diag\nFAIL: calibration is null';
+      return null;
+    }
+
+    final evidence = EvidenceBuilder.build(
+      context: EvidenceSessionContext(
+        sessionId: session.sessionId,
+        movementConfigVersion: session.movementConfigVersion,
+        spotId: session.spotId,
+        lat: location.lat,
+        lng: location.lng,
+        accuracyM: location.accuracyM,
+        isMocked: location.isMocked,
+      ),
+      movementId: 'squat',
+      measurementType: 'repBodyweight',
+      startedAtMs: 0,
+      endedAtMs: setEndMs,
+      calibration: calibration,
+      reps: List<RepEvent>.unmodifiable(_repEvents),
+      framesTotal: _framesTotal,
+      framesDropped: _framesDropped,
+      fpsMean: fpsMean,
+    );
+    if (evidence == null) {
+      // Pinpoint which builder check failed.
+      final torsoPx = calibration.torsoLengthPx;
+      final shoulderPx = calibration.shoulderWidthPx;
+      final reason = StringBuffer('EvidenceBuilder REJECTED:');
+      if (torsoPx == null) reason.write(' torsoLengthPx=NULL');
+      if (shoulderPx == null) reason.write(' shoulderWidthPx=NULL');
+      if (torsoPx != null && (torsoPx < 1 || torsoPx > 100000 || !torsoPx.isFinite)) {
+        reason.write(' torsoLengthPx INVALID=$torsoPx');
+      }
+      if (shoulderPx != null && (shoulderPx < 1 || shoulderPx > 100000 || !shoulderPx.isFinite)) {
+        reason.write(' shoulderWidthPx INVALID=$shoulderPx');
+      }
+      if (setEndMs <= 0) reason.write(' setEndMs<=0');
+      for (var i = 0; i < _repEvents.length; i++) {
+        final r = _repEvents[i];
+        if (r.tStartMs < 0) reason.write(' rep[$i].tStartMs<0');
+        if (r.tEndMs > setEndMs) reason.write(' rep[$i].tEndMs>setEndMs');
+        if (r.tEndMs <= r.tStartMs) reason.write(' rep[$i].tEnd<=tStart');
+      }
+      lastFinishDiagnostic = '$diag\n$reason';
+      debugPrint('[Evidence-Diag] $reason');
+    } else {
+      lastFinishDiagnostic = '$diag\nEvidenceBuilder: OK';
+      debugPrint('[Evidence-Diag] EvidenceBuilder.build => OK');
+    }
+    return evidence;
   }
 
   Future<void> _releaseCamera() async {
