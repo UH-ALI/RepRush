@@ -123,6 +123,47 @@ final _evidence = <String, Object?>{
 };
 
 // ---------------------------------------------------------------------------
+// Captured territory payloads
+// ---------------------------------------------------------------------------
+//
+// These mirror the exact JSON `supabase/functions/territory/index.ts` serialises —
+// same keys, same order, same int-vs-float choices (`power: 620` arrives as an int
+// for a whole-valued double, exactly like the five `difficulty: 1` rows above).
+// Re-capture them with a dev token on the live e2e; until then they are pinned to
+// the route's output shape, which is the half that breaks the map on a swap.
+
+/// `GET /territory/hexes?bbox=…`, a BARE ARRAY of CLAIMED cells only — the route
+/// omits unclaimed hexes (the map draws the basemap beneath), so there is no
+/// `ownerHandle: null` row in the live wire. One `rival` cell and one `mine` cell.
+const _hexesJson =
+    '['
+    '{"h3":"88195da49bfffff",'
+    '"polygon":[{"lat":51.5074,"lng":-0.1278},{"lat":51.5081,"lng":-0.1266},'
+    '{"lat":51.5089,"lng":-0.1272}],'
+    '"ownerHandle":"rival_kat","ownerColor":"rival","power":1240.5,"yours":false},'
+    '{"h3":"88195da49d7ffff",'
+    '"polygon":[{"lat":51.5060,"lng":-0.1290},{"lat":51.5066,"lng":-0.1281}],'
+    '"ownerHandle":"demo_athlete","ownerColor":"mine","power":620,"yours":true}'
+    ']';
+
+/// `GET /territory/hex/<h3>` — a contested cell (total power > yourPower) with two
+/// flips and an empty `spots` array (spots are B-12, not yet built).
+const _hexDetailJson =
+    '{"h3":"88195da49bfffff","ownerHandle":"rival_kat",'
+    '"power":1240,"yourPower":620,"spots":[],'
+    '"recentFlips":[{"handle":"rival_kat","atMs":1788700000000},'
+    '{"handle":"demo_athlete","atMs":1788613600000}]}';
+
+/// `GET /territory/leaderboard` — holders ranked by hexes held, `areaKm2 =
+/// hexesHeld × 0.737`. The demo user is on the board so the swap shows a real row.
+const _leaderboardJson =
+    '['
+    '{"rank":1,"handle":"iron_meridian","hexesHeld":9,"areaKm2":6.633},'
+    '{"rank":2,"handle":"rival_kat","hexesHeld":7,"areaKm2":5.159},'
+    '{"rank":3,"handle":"demo_athlete","hexesHeld":1,"areaKm2":0.737}'
+    ']';
+
+// ---------------------------------------------------------------------------
 // The fake transport
 // ---------------------------------------------------------------------------
 
@@ -130,11 +171,15 @@ final _evidence = <String, Object?>{
 /// ask for" is a real failure mode: `FunctionsClient.invoke` defaults to POST and
 /// does not infer GET from a null body.
 class _Call {
-  const _Call(this.verb, this.function, this.body);
+  const _Call(this.verb, this.function, this.body, {this.query});
 
   final String verb;
   final String function;
   final Map<String, Object?>? body;
+
+  /// The query string a `getQuery` call carried, so a test can assert the bbox the
+  /// repository built rather than trusting it. Null for `get`/`post`.
+  final Map<String, String>? query;
 
   @override
   String toString() => '$verb $function';
@@ -160,15 +205,20 @@ class _FakeTransport implements ApiTransport {
   Future<Object?> get(String function) => _record('GET', function, null);
 
   @override
+  Future<Object?> getQuery(String function, Map<String, String> query) =>
+      _record('GET', function, null, query: query);
+
+  @override
   Future<Object?> post(String function, Map<String, Object?> body) =>
       _record('POST', function, body);
 
   Future<Object?> _record(
     String verb,
     String function,
-    Map<String, Object?>? body,
-  ) async {
-    calls.add(_Call(verb, function, body));
+    Map<String, Object?>? body, {
+    Map<String, String>? query,
+  }) async {
+    calls.add(_Call(verb, function, body, query: query));
     final failure = failWith?.call(function);
     if (failure != null) throw failure;
     return respond?.call(function);
@@ -504,6 +554,179 @@ void main() {
       // The stub returns a `const UserProfile`, so identity proves this is a real
       // pass-through and not a copy that happens to look correct.
       expect(profile, same(await stub.me()));
+    });
+  });
+
+  group('LiveTerritoryRepository.hexes', () {
+    test('GETs territory/hexes with the bbox as one comma-joined query value', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexesJson));
+
+      await LiveTerritoryRepository(transport: transport).hexes(
+        swLat: 51.505,
+        swLng: -0.130,
+        neLat: 51.510,
+        neLng: -0.125,
+      );
+
+      final call = transport.only;
+      expect(call.verb, 'GET');
+      // The deployed function name plus the path tail Kong forwards, not the
+      // contract's slashed `GET /territory/hexes`.
+      expect(call.function, 'territory/hexes');
+      expect(call.body, isNull);
+      expect(call.query, <String, String>{
+        'bbox': '51.505,-0.13,51.51,-0.125',
+      });
+    });
+
+    test('reads the claimed-cell array, coercing whole-valued power to double', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexesJson));
+
+      final cells = await LiveTerritoryRepository(transport: transport).hexes(
+        swLat: 51.505,
+        swLng: -0.130,
+        neLat: 51.510,
+        neLng: -0.125,
+      );
+
+      expect(cells, hasLength(2));
+      final rival = cells[0];
+      expect(rival.h3, '88195da49bfffff');
+      expect(rival.ownerColor, 'rival');
+      expect(rival.ownerHandle, 'rival_kat');
+      expect(rival.power, 1240.5);
+      expect(rival.yours, isFalse);
+      // The polygon ships as plain {lat,lng} points — no H3 maths on the client.
+      expect(rival.polygon, hasLength(3));
+      expect(rival.polygon.first.lat, 51.5074);
+      expect(rival.polygon.first.lng, -0.1278);
+
+      // `power: 620` arrived as a JSON int and must become a double, the same trap
+      // the five integral `difficulty` values above cover.
+      final mine = cells[1];
+      expect(mine.ownerColor, 'mine');
+      expect(mine.power, 620.0);
+      expect(mine.yours, isTrue);
+    });
+
+    test('round-trips a cell: fromJson(x).toJson() == x', () async {
+      final wire = (jsonDecode(_hexesJson) as List<Object?>).cast<Map<String, Object?>>();
+      for (final raw in wire) {
+        expect(HexCell.fromJson(raw).toJson(), raw);
+      }
+    });
+
+    test('a bbox-too-large rejection reaches the caller with its code', () async {
+      final transport = _FakeTransport(
+        failWith: (_) => ApiException.fromResponse(
+          statusCode: 400,
+          body: <String, Object?>{
+            'code': ApiErrorCode.bboxTooLarge,
+            'message': 'bbox side exceeds 0.5°',
+          },
+        ),
+      );
+
+      await expectLater(
+        LiveTerritoryRepository(transport: transport).hexes(
+          swLat: 0,
+          swLng: 0,
+          neLat: 10,
+          neLng: 10,
+        ),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ApiErrorCode.bboxTooLarge)
+              .having((e) => e.statusCode, 'statusCode', 400),
+        ),
+      );
+    });
+  });
+
+  group('LiveTerritoryRepository.hexDetail', () {
+    test('GETs territory/hex/<h3> with the id as a path segment', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexDetailJson));
+
+      await LiveTerritoryRepository(transport: transport).hexDetail(
+        '88195da49bfffff',
+      );
+
+      final call = transport.only;
+      expect(call.verb, 'GET');
+      expect(call.function, 'territory/hex/88195da49bfffff');
+      expect(call.query, isNull);
+    });
+
+    test('reads a contested cell: total power, your share, flips, empty spots', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexDetailJson));
+
+      final detail = await LiveTerritoryRepository(
+        transport: transport,
+      ).hexDetail('88195da49bfffff');
+
+      expect(detail.h3, '88195da49bfffff');
+      expect(detail.ownerHandle, 'rival_kat');
+      // Contested: total (1240) is double this user's share (620). Both ints on the
+      // wire, both doubles here.
+      expect(detail.power, 1240.0);
+      expect(detail.yourPower, 620.0);
+      expect(detail.spots, isEmpty);
+      expect(detail.recentFlips, hasLength(2));
+      expect(detail.recentFlips.first.handle, 'rival_kat');
+      expect(detail.recentFlips.first.atMs, 1788700000000);
+    });
+
+    test('round-trips: fromJson(x).toJson() == x', () {
+      final raw = jsonDecode(_hexDetailJson) as Map<String, Object?>;
+      expect(HexDetail.fromJson(raw).toJson(), raw);
+    });
+
+    test('an unknown hex surfaces as a 404 with its code', () async {
+      final transport = _FakeTransport(
+        failWith: (_) => ApiException.fromResponse(
+          statusCode: 404,
+          body: <String, Object?>{
+            'code': ApiErrorCode.unknownHex,
+            'message': 'No territory recorded for hex',
+          },
+        ),
+      );
+
+      await expectLater(
+        LiveTerritoryRepository(transport: transport).hexDetail('880000000000'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ApiErrorCode.unknownHex)
+              .having((e) => e.statusCode, 'statusCode', 404),
+        ),
+      );
+    });
+  });
+
+  group('LiveTerritoryRepository.leaderboard', () {
+    test('GETs territory/leaderboard and reads the ranked rows', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_leaderboardJson));
+
+      final rows = await LiveTerritoryRepository(transport: transport).leaderboard();
+
+      expect(transport.only.verb, 'GET');
+      expect(transport.only.function, 'territory/leaderboard');
+      expect(rows, hasLength(3));
+      expect(rows.first.rank, 1);
+      expect(rows.first.handle, 'iron_meridian');
+      expect(rows.first.hexesHeld, 9);
+      // areaKm2 is hexesHeld × 0.737; 9 × 0.737 = 6.633.
+      expect(rows.first.areaKm2, closeTo(6.633, 1e-9));
+      expect(rows.last.handle, 'demo_athlete');
+      expect(rows.last.hexesHeld, 1);
+    });
+
+    test('round-trips every row: fromJson(x).toJson() == x', () {
+      final wire = (jsonDecode(_leaderboardJson) as List<Object?>)
+          .cast<Map<String, Object?>>();
+      for (final raw in wire) {
+        expect(LeaderboardRow.fromJson(raw).toJson(), raw);
+      }
     });
   });
 

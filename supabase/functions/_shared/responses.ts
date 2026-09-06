@@ -21,6 +21,7 @@ import { CatalogueError } from "./evidence/thresholds.ts";
  *   MALFORMED_REQUEST   a non-Evidence request body we cannot read
  *   RATE_LIMITED        I11 session-per-day budget exhausted
  *   SCORING_FAILED      a seeding gap made the payload unscorable (our bug)
+ *   BBOX_TOO_LARGE      GET /territory/hexes asked for more map than we serve
  *   INTERNAL            an unhandled server fault; still needs a code
  */
 export const ErrorCode = {
@@ -38,6 +39,8 @@ export const ErrorCode = {
   MALFORMED_REQUEST: "MALFORMED_REQUEST",
   RATE_LIMITED: "RATE_LIMITED",
   SCORING_FAILED: "SCORING_FAILED",
+  BBOX_TOO_LARGE: "BBOX_TOO_LARGE",
+  UNKNOWN_HEX: "UNKNOWN_HEX",
   INTERNAL: "INTERNAL",
 } as const;
 

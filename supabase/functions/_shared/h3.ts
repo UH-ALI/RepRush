@@ -4,7 +4,7 @@
 ///
 /// Deno-only: `npm:` specifier. Nothing in the pure tree imports this.
 
-import { latLngToCell } from "npm:h3-js@4";
+import { cellToBoundary, latLngToCell, polygonToCells } from "npm:h3-js@4";
 
 /**
  * Resolution 8 — average hexagon area ~0.737 km², the number quoted throughout
@@ -29,4 +29,47 @@ export function hexFor(lat: number, lng: number): string {
     throw new RangeError(`longitude out of range: ${lng}`);
   }
   return latLngToCell(lat, lng, H3_RESOLUTION);
+}
+
+/** A closed lat/lng vertex loop, the shape h3-js's polygon functions take. */
+export type LatLngLoop = [number, number][];
+
+/**
+ * Every res-8 cell whose CENTRE falls inside a bbox (B-10 — the server computes
+ * the grid; the client only ever receives plain coordinate polygons).
+ *
+ * `polygonToCells` rather than a `gridDisk` around the centre: a disk of any fixed
+ * radius under-covers a bbox larger than a handful of cells (the map's bbox is
+ * bounded only by the route's `BBOX_TOO_LARGE` checks, not by a small radius),
+ * whereas `polygonToCells` returns exactly the contained cells for any box size.
+ * Centre-containment is the standard choice for a display grid and matches how the
+ * four corners are enumerated into a closed loop below (SW → NW → NE → SE).
+ *
+ * The bbox is validated by the caller (finite, `ne > sw`, within the degree and
+ * cell-count caps) before this runs; h3-js itself throws on an out-of-range vertex,
+ * which the route maps to a 400 rather than a 500.
+ */
+export function cellsCoveringBBox(
+  swLat: number,
+  swLng: number,
+  neLat: number,
+  neLng: number,
+): string[] {
+  const loop: LatLngLoop = [
+    [swLat, swLng],
+    [neLat, swLng],
+    [neLat, neLng],
+    [swLat, neLng],
+  ];
+  return polygonToCells(loop, H3_RESOLUTION, false);
+}
+
+/**
+ * The boundary of one cell as `[lat, lng]` vertices, counter-clockwise from a
+ * vertex — h3-js's native order and format. The route maps each pair to a
+ * `{ lat, lng }` point for the client's `HexPolygon`; no H3 maths reaches the
+ * client (requirements.md §8 open-1).
+ */
+export function hexBoundary(h3: string): LatLngLoop {
+  return cellToBoundary(h3) as LatLngLoop;
 }

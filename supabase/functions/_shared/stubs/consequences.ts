@@ -2,9 +2,12 @@
 ///
 /// SCOPE NOTE. This slice implements counting and verification, not territory.
 /// The scoring half of C4 (`xp`) is real: it comes straight out of the ledger
-/// write. The territory half is a thin deterministic stand-in, because the tables
-/// it would read (`hex_claims`, `spot_holders`, `personal_records`, the XP curve)
-/// do not exist in this migration set.
+/// write. The territory half below is a thin deterministic stand-in, because the
+/// tables it would read (`spot_holders`, `personal_records`, the XP curve) do not
+/// exist in this migration set. `hexResult` is the ONE exception: the live submit
+/// path now computes it from the real contributions ledger (migration 0007) and
+/// passes it in via `ConsequenceInput.hexResultOverride`; the stand-in here remains
+/// only as the non-live / golden default.
 ///
 /// Two rules were non-negotiable even for a stand-in:
 ///
@@ -75,6 +78,14 @@ export interface ConsequenceInput {
   score: EvidenceScore;
   /** Lifetime XP *before* this submission, for the level-up delta. */
   priorLifetimeXp: number;
+  /**
+   * The REAL territory result, computed by the live submit path from the
+   * contributions ledger (session-submit step 9). When present — including as an
+   * explicit `null` meaning "scored, but no territory claim registered" — it
+   * REPLACES the deterministic stub below. Absent (`undefined`) keeps the stub, so
+   * every existing golden fixture and the non-live path are byte-for-byte unchanged.
+   */
+  hexResultOverride?: HexResultOut | null;
 }
 
 /**
@@ -116,13 +127,17 @@ export function buildConsequences(input: ConsequenceInput): Consequences {
     level: levelForXp(input.priorLifetimeXp + xp),
     levelUps: levelsCrossed(input.priorLifetimeXp, input.priorLifetimeXp + xp),
 
-    // STUB. Real version: upsert into the hex claim table keyed on `h3`, add
-    // `awarded` to this user's power there, subtract decayed power from the
-    // previous holder, and return the hex's TOTAL power alongside this user's
-    // contribution. Without that table the two are the same number, which is why
-    // `power === yourPower` here — visibly wrong the moment contest exists, and
-    // therefore impossible to mistake for the finished thing.
-    hexResult: captured
+    // The live path passes `hexResultOverride`, computed from the ledger; when it
+    // is present (even as null) it wins. Otherwise this is the STUB used by the
+    // non-live path and the goldens. Real version once override is always supplied:
+    // upsert into the hex claim table keyed on `h3`, add `awarded` to this user's
+    // power there, subtract decayed power from the previous holder, and return the
+    // hex's TOTAL power alongside this user's contribution. Without that, the two
+    // are the same number, which is why `power === yourPower` here — visibly wrong
+    // the moment contest exists, and therefore impossible to mistake for finished.
+    hexResult: input.hexResultOverride !== undefined
+      ? input.hexResultOverride
+      : captured
       ? { h3: input.h3, captured: true, power: awarded, yourPower: awarded }
       : null,
 

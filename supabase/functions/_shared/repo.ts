@@ -10,10 +10,12 @@
 
 import { buildCatalogue, type MovementDbRow, num, type OffsetDbRow } from "./catalogue.ts";
 import type { Db } from "./db.ts";
+import type { Board } from "./demo.ts";
 import type { Catalogue } from "./evidence/thresholds.ts";
 import type { Evidence } from "./evidence/schema.ts";
 import { ErrorCode, HttpError } from "./responses.ts";
 import { MAX_SESSIONS_PER_DAY } from "./scoring/caps.ts";
+import type { Contribution, MaterialisedOwner } from "./territory.ts";
 import type { FlagPayload, SetPayload } from "./outcome.ts";
 import { SESSION_EXPIRY_MS, type SessionRow } from "./validation/session.ts";
 
@@ -340,6 +342,206 @@ export async function recordOutcome(
     p_flags: flags,
   });
   if (error) failDb("recording the session outcome", error);
+}
+
+// ---------------------------------------------------------------------------
+// Territory (B-9) — the append-only contributions ledger and its ownership cache
+// ---------------------------------------------------------------------------
+
+/**
+ * Appends one immutable contribution. `power` is the awarded RepScore, frozen
+ * here; decay is applied on read (`_shared/territory.ts`), never written back.
+ * `hex_contributions.session_id` is UNIQUE (0007), so a double submit cannot
+ * double-award territory any more than it can double-award the ledger.
+ */
+export async function insertHexContribution(
+  client: Db,
+  input: { userId: string; sessionId: string; h3: string; power: number; board: Board },
+): Promise<void> {
+  const { error } = await client.from("hex_contributions").insert({
+    user_id: input.userId,
+    session_id: input.sessionId,
+    h3: input.h3,
+    power: input.power,
+    board: input.board,
+  });
+  if (error) failDb("inserting the hex contribution", error);
+}
+
+/** A `hex_contributions_live` row as PostgREST returns it. */
+interface LiveContributionRow {
+  user_id: string;
+  h3: string;
+  power: number | string;
+  earned_at: string;
+}
+
+/**
+ * The LIVE contributions for a set of hexes on one board, grouped by hex.
+ *
+ * Reads the `hex_contributions_live` VIEW (0007), not the bare table: the view
+ * filters `s.status = 'submitted'`, so a voided session's contribution is already
+ * gone by the time this returns — the I12 mechanism, identical to `lifetimeScore`.
+ * `earned_at` (timestamptz) is converted to epoch ms here so `_shared/territory.ts`
+ * stays a pure numeric function with no date parsing.
+ */
+export async function loadLiveContributions(
+  client: Db,
+  h3s: readonly string[],
+  board: Board,
+): Promise<Map<string, Contribution[]>> {
+  const byHex = new Map<string, Contribution[]>();
+  if (h3s.length === 0) return byHex;
+  const { data, error } = await client
+    .from("hex_contributions_live")
+    .select("user_id, h3, power, earned_at")
+    .eq("board", board)
+    .in("h3", [...h3s]);
+  if (error) failDb("reading live hex contributions", error);
+  for (const row of (data ?? []) as LiveContributionRow[]) {
+    const contribution: Contribution = {
+      userId: row.user_id,
+      power: num(row.power, "power"),
+      earnedAtMs: Date.parse(row.earned_at),
+    };
+    const list = byHex.get(row.h3);
+    if (list === undefined) byHex.set(row.h3, [contribution]);
+    else list.push(contribution);
+  }
+  return byHex;
+}
+
+/** The materialised holder of one hex, or null when the cache has no row for it. */
+export async function loadOwnership(
+  client: Db,
+  h3: string,
+  board: Board,
+): Promise<MaterialisedOwner | null> {
+  const { data, error } = await client
+    .from("hex_ownership")
+    .select("owner_id, owner_power")
+    .eq("h3", h3)
+    .eq("board", board)
+    .maybeSingle();
+  if (error) failDb("reading hex ownership", error);
+  if (data === null) return null;
+  return {
+    ownerId: data.owner_id as string,
+    ownerPower: num(data.owner_power, "owner_power"),
+  };
+}
+
+/** Writes the ownership cache row for a hex (PK `(h3, board)`, 0007). */
+export async function upsertOwnership(
+  client: Db,
+  input: { h3: string; board: Board; ownerId: string; ownerPower: number },
+): Promise<void> {
+  const { error } = await client.from("hex_ownership").upsert(
+    {
+      h3: input.h3,
+      board: input.board,
+      owner_id: input.ownerId,
+      owner_power: input.ownerPower,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "h3,board" },
+  );
+  if (error) failDb("upserting hex ownership", error);
+}
+
+/** Drops the cache row when a holder decayed below the claim threshold. */
+export async function clearOwnership(client: Db, h3: string, board: Board): Promise<void> {
+  const { error } = await client.from("hex_ownership").delete().eq("h3", h3).eq("board", board);
+  if (error) failDb("clearing hex ownership", error);
+}
+
+/** Appends a holder-change audit row (D6 "recent flips"). Append-only (0007). */
+export async function insertFlip(
+  client: Db,
+  input: { h3: string; board: Board; fromUserId: string | null; toUserId: string; atMs: number },
+): Promise<void> {
+  const { error } = await client.from("hex_flips").insert({
+    h3: input.h3,
+    board: input.board,
+    from_user_id: input.fromUserId,
+    to_user_id: input.toUserId,
+    at_ms: input.atMs,
+  });
+  if (error) failDb("inserting the hex flip", error);
+}
+
+/** Batch handle lookup, so a bbox of many cells costs one profiles round trip. */
+export async function loadHandles(
+  client: Db,
+  userIds: readonly string[],
+): Promise<Map<string, string>> {
+  const handles = new Map<string, string>();
+  if (userIds.length === 0) return handles;
+  const { data, error } = await client.from("profiles").select("id, handle").in("id", [...userIds]);
+  if (error) failDb("reading handles", error);
+  for (const row of (data ?? []) as { id: string; handle: string }[]) {
+    handles.set(row.id, row.handle);
+  }
+  return handles;
+}
+
+export interface FlipView {
+  handle: string;
+  atMs: number;
+}
+
+/** The most recent holder changes for one hex, newest-first (D6). */
+export async function recentFlips(
+  client: Db,
+  h3: string,
+  board: Board,
+  limit = 5,
+): Promise<FlipView[]> {
+  const { data, error } = await client
+    .from("hex_flips")
+    .select("to_user_id, at_ms")
+    .eq("h3", h3)
+    .eq("board", board)
+    .order("at_ms", { ascending: false })
+    .limit(limit);
+  if (error) failDb("reading recent flips", error);
+  const rows = (data ?? []) as { to_user_id: string; at_ms: number | string }[];
+  const handles = await loadHandles(client, rows.map((r) => r.to_user_id));
+  return rows.map((r) => ({
+    handle: handles.get(r.to_user_id) ?? "unknown",
+    atMs: num(r.at_ms, "at_ms"),
+  }));
+}
+
+export interface LeaderboardEntry {
+  handle: string;
+  hexesHeld: number;
+}
+
+/**
+ * The territory leaderboard (D7): holders ranked by hexes held, most first.
+ *
+ * Reads the `hex_ownership` CACHE, not the ledger — that is the whole reason the
+ * cache exists (0007 header): counting `owner_id` rows is O(claimed hexes) with no
+ * decay maths and no join to contributions. Grouping is done here rather than in
+ * SQL because PostgREST has no GROUP BY and a view for it would be a fourth
+ * migration object for a bounded, hackathon-scale row count. The cache can lag a
+ * holder who decayed below threshold with no new session to re-resolve the cell;
+ * that self-corrects on the next submit in the cell, which is the documented
+ * cache-vs-truth trade-off.
+ */
+export async function leaderboardRows(client: Db, board: Board): Promise<LeaderboardEntry[]> {
+  const { data, error } = await client.from("hex_ownership").select("owner_id").eq("board", board);
+  if (error) failDb("reading the leaderboard", error);
+  const rows = (data ?? []) as { owner_id: string }[];
+  const counts = new Map<string, number>();
+  for (const row of rows) counts.set(row.owner_id, (counts.get(row.owner_id) ?? 0) + 1);
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const handles = await loadHandles(client, ranked.map(([id]) => id));
+  return ranked.map(([id, hexesHeld]) => ({
+    handle: handles.get(id) ?? "unknown",
+    hexesHeld,
+  }));
 }
 
 // ---------------------------------------------------------------------------

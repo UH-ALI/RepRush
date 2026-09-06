@@ -44,6 +44,9 @@
     "c4": "deno run --allow-read tool/c4_payloads.ts",
     "c4:node": "node tool/c4_payloads.ts",
     "user": "deno run --allow-net --allow-env --allow-write tool/dev_user.ts",
-    "user:node": "node tool/dev_user.ts"
+    "user:node": "node tool/dev_user.ts",
+    "reset": "deno run --allow-net --allow-env --allow-read tool/reset_demo.ts",
+    "reset:node": "node tool/reset_demo.ts",
+    "seed": "deno run --allow-net --allow-env --allow-read tool/seed_rivals.ts"
   }
 }

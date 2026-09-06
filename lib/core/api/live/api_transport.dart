@@ -27,6 +27,15 @@ abstract interface class ApiTransport {
   /// `GET /functions/v1/[function]`, returning the decoded JSON body.
   Future<Object?> get(String function);
 
+  /// `GET /functions/v1/[function]?k=v…` — [get] with a query string.
+  ///
+  /// A separate method rather than callers embedding `?k=v` in [function]: the
+  /// values need percent-encoding (a bbox carries commas) and the SDK's
+  /// `functions.invoke` takes a typed `queryParameters` map that does it, whereas a
+  /// hand-built suffix would be re-encoded or dropped depending on the SDK version.
+  /// Keys and values are strings because that is all a query string carries.
+  Future<Object?> getQuery(String function, Map<String, String> query);
+
   /// `POST /functions/v1/[function]` with [body] as JSON.
   Future<Object?> post(String function, Map<String, Object?> body);
 }

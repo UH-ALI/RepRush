@@ -141,14 +141,19 @@ class SupabaseTransport implements ApiTransport {
       _invoke(function, HttpMethod.get, null);
 
   @override
+  Future<Object?> getQuery(String function, Map<String, String> query) =>
+      _invoke(function, HttpMethod.get, null, queryParameters: query);
+
+  @override
   Future<Object?> post(String function, Map<String, Object?> body) =>
       _invoke(function, HttpMethod.post, body);
 
   Future<Object?> _invoke(
     String function,
     HttpMethod method,
-    Object? body,
-  ) async {
+    Object? body, {
+    Map<String, String>? queryParameters,
+  }) async {
     await _ensured;
     try {
       // `method` is passed explicitly. `invoke` defaults to POST and does NOT infer
@@ -159,6 +164,7 @@ class SupabaseTransport implements ApiTransport {
         function,
         method: method,
         body: body,
+        queryParameters: queryParameters,
       );
       return response.data;
     } on FunctionException catch (error) {

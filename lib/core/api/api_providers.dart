@@ -53,18 +53,28 @@ final progressionRepositoryProvider = Provider<ProgressionRepository>((ref) {
       : LiveProgressionRepository(transport: transport, fallback: fallback);
 });
 
+/// Live whole, not per method: all three `territory` routes ship together in one
+/// deployed function (map grid, hex detail, leaderboard). Unlike progression there
+/// is no half-deployed method to delegate, so no fallback is threaded in — when the
+/// transport is null (stub build) the whole repository is the stub, else the whole
+/// thing is live. Swapping this is the ONLY change C's map needs on the Day-3 cut:
+/// `HexCell`/`HexDetail` keep their shapes and `ownerColor` stays the
+/// 'mine'/'rival'/'unclaimed' token vocabulary `map_screen.dart` already renders.
+final territoryRepositoryProvider = Provider<TerritoryRepository>((ref) {
+  final transport = ref.watch(apiTransportProvider);
+  return transport == null
+      ? const StubTerritoryRepository()
+      : LiveTerritoryRepository(transport: transport);
+});
+
 // ---------------------------------------------------------------------------
 // Still stubs — no route is deployed for any of these.
 //
-// The register lists four more endpoints, but flipping a binding before its
-// function exists trades populated fake data for a 404 on screen, which is
-// strictly worse for C building against it now. Each moves above when its
-// directory lands under `supabase/functions/`.
+// The register lists more endpoints, but flipping a binding before its function
+// exists trades populated fake data for a 404 on screen, which is strictly worse
+// for C building against it now. Each moves above when its directory lands under
+// `supabase/functions/`.
 // ---------------------------------------------------------------------------
-
-final territoryRepositoryProvider = Provider<TerritoryRepository>(
-  (ref) => const StubTerritoryRepository(),
-);
 
 final spotsRepositoryProvider = Provider<SpotsRepository>(
   (ref) => const StubSpotsRepository(),

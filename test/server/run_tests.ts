@@ -23,6 +23,7 @@ import "./schema_test.ts";
 import "./rep_machine_test.ts";
 import "./trace_test.ts";
 import "./session_test.ts";
+import "./territory_test.ts";
 import "./golden_test.ts";
 
 import { runTests } from "./_harness.ts";

@@ -2,8 +2,8 @@
 ///
 /// Ownership: B.
 ///
-/// ONLY ROUTES THAT EXIST ARE LIVE. Three of the ~13 endpoints in the register are
-/// implemented (`session-start`, `session-submit`, `movements`), so this file
+/// ONLY ROUTES THAT EXIST ARE LIVE. Four endpoint areas are implemented
+/// (`session-start`, `session-submit`, `movements`, `territory`), so this file
 /// implements exactly those and delegates everything else to a stub. That mirrors
 /// the server's own `LIVE_ENDPOINTS` mechanism, which puts one route on the live
 /// path at a time so a regression is a rollback in seconds rather than a rewrite.
@@ -90,5 +90,52 @@ class LiveProgressionRepository implements ProgressionRepository {
   Future<List<Movement>> movements() async {
     final body = await transport.get('movements');
     return Movement.listFromJson(body);
+  }
+}
+
+/// `GET /territory/hexes`, `GET /territory/hex/:h3`, `GET /territory/leaderboard`.
+///
+/// All three routes ship together in the one deployed `territory` function (see its
+/// header for the path-dispatch deviation from roles.md B-9/B-10), so this
+/// repository is live whole — no per-method [ProgressionRepository]-style fallback.
+/// Power arrives already DECAYED (D3): the server reconstructs it from the
+/// contributions ledger at read time, so the client never sees a half-life.
+class LiveTerritoryRepository implements TerritoryRepository {
+  const LiveTerritoryRepository({required this.transport});
+
+  /// Public for the same reason as [LiveSessionRepository.transport].
+  final ApiTransport transport;
+
+  @override
+  Future<List<HexCell>> hexes({
+    required double swLat,
+    required double swLng,
+    required double neLat,
+    required double neLng,
+  }) async {
+    // The bbox travels as ONE "swLat,swLng,neLat,neLng" value that the route splits
+    // and validates; `getQuery` percent-encodes the commas. Unclaimed cells are
+    // omitted server-side, so this list is only the claimed polygons over the
+    // basemap — the map draws the rest as bare map.
+    final bbox = '$swLat,$swLng,$neLat,$neLng';
+    final body = await transport.getQuery('territory/hexes', <String, String>{
+      'bbox': bbox,
+    });
+    return HexCell.listFromJson(body);
+  }
+
+  @override
+  Future<HexDetail> hexDetail(String h3) async {
+    // The h3 is a path segment, not a query value. A cell with no recorded
+    // territory answers 404 UNKNOWN_HEX, which surfaces as an [ApiException] — the
+    // same code the stub throws, so the detail sheet handles both identically.
+    final body = await transport.get('territory/hex/$h3');
+    return HexDetail.fromJson(body);
+  }
+
+  @override
+  Future<List<LeaderboardRow>> leaderboard() async {
+    final body = await transport.get('territory/leaderboard');
+    return LeaderboardRow.listFromJson(body);
   }
 }

@@ -255,6 +255,19 @@ class GeoPoint {
 
   final double lat;
   final double lng;
+
+  factory GeoPoint.fromJson(Object? json) {
+    final map = _asMap(json, 'geoPoint');
+    return GeoPoint(
+      lat: _asDouble(map['lat'], 'geoPoint.lat'),
+      lng: _asDouble(map['lng'], 'geoPoint.lng'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'lat': lat,
+    'lng': lng,
+  };
 }
 
 /// A hex boundary shipped as plain coordinates — the client never computes H3.
@@ -565,6 +578,35 @@ class HexCell {
   final String ownerColor;
   final double power;
   final bool yours;
+
+  factory HexCell.fromJson(Object? json) {
+    final map = _asMap(json, 'hexCell');
+    return HexCell(
+      h3: _asString(map['h3'], 'hexCell.h3'),
+      polygon: _asList(
+        map['polygon'],
+        'hexCell.polygon',
+      ).map(GeoPoint.fromJson).toList(growable: false),
+      ownerColor: _asString(map['ownerColor'], 'hexCell.ownerColor'),
+      power: _asDouble(map['power'], 'hexCell.power'),
+      yours: _asBool(map['yours'], 'hexCell.yours'),
+      ownerHandle: _asStringOrNull(map['ownerHandle'], 'hexCell.ownerHandle'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'h3': h3,
+    'polygon': polygon.map((p) => p.toJson()).toList(growable: false),
+    'ownerHandle': ownerHandle,
+    'ownerColor': ownerColor,
+    'power': power,
+    'yours': yours,
+  };
+
+  static List<HexCell> listFromJson(Object? json) => _asList(
+    json,
+    'hexCells',
+  ).map(HexCell.fromJson).toList(growable: false);
 }
 
 @immutable
@@ -573,6 +615,19 @@ class HexFlip {
 
   final String handle;
   final int atMs;
+
+  factory HexFlip.fromJson(Object? json) {
+    final map = _asMap(json, 'hexFlip');
+    return HexFlip(
+      handle: _asString(map['handle'], 'hexFlip.handle'),
+      atMs: _asInt(map['atMs'], 'hexFlip.atMs'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'handle': handle,
+    'atMs': atMs,
+  };
 }
 
 @immutable
@@ -592,6 +647,33 @@ class HexDetail {
   final double yourPower;
   final List<SpotSummary> spots;
   final List<HexFlip> recentFlips;
+
+  factory HexDetail.fromJson(Object? json) {
+    final map = _asMap(json, 'hexDetail');
+    return HexDetail(
+      h3: _asString(map['h3'], 'hexDetail.h3'),
+      power: _asDouble(map['power'], 'hexDetail.power'),
+      yourPower: _asDouble(map['yourPower'], 'hexDetail.yourPower'),
+      spots: _asList(
+        map['spots'],
+        'hexDetail.spots',
+      ).map(SpotSummary.fromJson).toList(growable: false),
+      recentFlips: _asList(
+        map['recentFlips'],
+        'hexDetail.recentFlips',
+      ).map(HexFlip.fromJson).toList(growable: false),
+      ownerHandle: _asStringOrNull(map['ownerHandle'], 'hexDetail.ownerHandle'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'h3': h3,
+    'ownerHandle': ownerHandle,
+    'power': power,
+    'yourPower': yourPower,
+    'spots': spots.map((s) => s.toJson()).toList(growable: false),
+    'recentFlips': recentFlips.map((f) => f.toJson()).toList(growable: false),
+  };
 }
 
 @immutable
@@ -607,6 +689,28 @@ class LeaderboardRow {
   final String handle;
   final int hexesHeld;
   final double areaKm2;
+
+  factory LeaderboardRow.fromJson(Object? json) {
+    final map = _asMap(json, 'leaderboardRow');
+    return LeaderboardRow(
+      rank: _asInt(map['rank'], 'leaderboardRow.rank'),
+      handle: _asString(map['handle'], 'leaderboardRow.handle'),
+      hexesHeld: _asInt(map['hexesHeld'], 'leaderboardRow.hexesHeld'),
+      areaKm2: _asDouble(map['areaKm2'], 'leaderboardRow.areaKm2'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'rank': rank,
+    'handle': handle,
+    'hexesHeld': hexesHeld,
+    'areaKm2': areaKm2,
+  };
+
+  static List<LeaderboardRow> listFromJson(Object? json) => _asList(
+    json,
+    'leaderboard',
+  ).map(LeaderboardRow.fromJson).toList(growable: false);
 }
 
 // ---------------------------------------------------------------------------
@@ -650,6 +754,46 @@ class SpotSummary {
   final bool verified;
   final String? holderHandle;
   final double? distanceM;
+
+  factory SpotSummary.fromJson(Object? json) {
+    final map = _asMap(json, 'spotSummary');
+    return SpotSummary(
+      id: _asString(map['id'], 'spotSummary.id'),
+      name: _asString(map['name'], 'spotSummary.name'),
+      type: _asEnum(
+        map['type'],
+        'spotSummary.type',
+        SpotType.values,
+        (value) => value.wireName,
+      ),
+      lat: _asDouble(map['lat'], 'spotSummary.lat'),
+      lng: _asDouble(map['lng'], 'spotSummary.lng'),
+      verified: _asBool(map['verified'], 'spotSummary.verified'),
+      holderHandle: _asStringOrNull(
+        map['holderHandle'],
+        'spotSummary.holderHandle',
+      ),
+      distanceM: map['distanceM'] == null
+          ? null
+          : _asDouble(map['distanceM'], 'spotSummary.distanceM'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'name': name,
+    'type': type.wireName,
+    'lat': lat,
+    'lng': lng,
+    'verified': verified,
+    'holderHandle': holderHandle,
+    'distanceM': distanceM,
+  };
+
+  static List<SpotSummary> listFromJson(Object? json) => _asList(
+    json,
+    'spots',
+  ).map(SpotSummary.fromJson).toList(growable: false);
 }
 
 @immutable

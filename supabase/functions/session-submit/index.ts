@@ -25,11 +25,14 @@
 ///   7. Score. Pure recompute from measurements (I1). Nothing in the payload was
 ///      read as a score, and `parseEvidence` would have thrown if one was present.
 ///   8. Write. One transaction across six tables (migration 0005).
-///   9. Consequences. The score is real; the territory half is a documented stub.
+///   9. Consequences. The score is real; the territory half is REAL when
+///      `territory` is live (resolved from the contributions ledger in
+///      `resolveTerritory`), and the documented stub otherwise.
 
 import { type Authed, requireUser } from "../_shared/auth.ts";
-import { db } from "../_shared/db.ts";
+import { type Db, db } from "../_shared/db.ts";
 import { assertResolvable } from "../_shared/catalogue.ts";
+import { boardFor } from "../_shared/demo.ts";
 import { parseEvidence } from "../_shared/evidence/schema.ts";
 import { resolveThresholds } from "../_shared/evidence/thresholds.ts";
 import { isLive } from "../_shared/env.ts";
@@ -37,20 +40,104 @@ import type { Flag } from "../_shared/flags.ts";
 import { toFlagPayloads, toSetPayloads } from "../_shared/outcome.ts";
 import { error, ErrorCode, HttpError, json, preflight, respond } from "../_shared/responses.ts";
 import {
+  clearOwnership,
   consumeSession,
+  insertFlip,
+  insertHexContribution,
   lifetimeScore,
   loadCatalogue,
   loadDailyCounter,
+  loadLiveContributions,
+  loadOwnership,
   loadSession,
   loadUnlocked,
   recordOutcome,
+  upsertOwnership,
 } from "../_shared/repo.ts";
 import { scoreEvidence } from "../_shared/scoring/score.ts";
-import type { Consequences } from "../_shared/stubs/consequences.ts";
+import type { Consequences, HexResultOut } from "../_shared/stubs/consequences.ts";
 import { buildConsequences } from "../_shared/stubs/consequences.ts";
 import { stubSubmit } from "../_shared/stubs/session-submit.ts";
-import { checkSubmitGates, utcDay } from "../_shared/validation/session.ts";
+import { detectFlip, minClaimPower, resolveHexPower, resolveOwner } from "../_shared/territory.ts";
+import { MAX_GPS_ACCURACY_M } from "../_shared/validation/geo.ts";
+import { checkSubmitGates, type SessionRow, utcDay } from "../_shared/validation/session.ts";
 import { crossCheckTrace } from "../_shared/validation/trace.ts";
+
+/// The territory write path (B-9), run AFTER `recordOutcome` so the session row is
+/// already `submitted` and the `hex_contributions_live` view (0007) sees it.
+///
+/// GATED, in this order:
+///   - D4: a start fix worse than the GPS gate, or a mocked fix, still SCORES (the
+///     session and its RepScore stand) but earns NO territory. That is exactly D4's
+///     "beyond this the session earns no territory credit" — the score/territory
+///     split is deliberate, not an oversight.
+///   - D2: below the claim threshold, nothing is written at all. A single drive-by
+///     rep must not append a contribution that could never win a hex anyway.
+///
+/// NOT wrapped in the outcome transaction, on purpose: a territory write failing
+/// must not roll back or lose an already-scored session, so the caller catches and
+/// degrades to `hexResult: null` (a scored session with no capture) rather than
+/// failing the submit. Territory is a consequence of the score, not part of it.
+async function resolveTerritory(
+  client: Db,
+  user: Authed,
+  session: SessionRow,
+  awarded: number,
+): Promise<HexResultOut | null> {
+  if (session.start_accuracy_m > MAX_GPS_ACCURACY_M || session.start_is_mocked) return null;
+  if (awarded < minClaimPower()) return null;
+
+  const board = boardFor(user.isDemo);
+  const h3 = session.start_h3;
+  const nowMs = Date.now();
+
+  // Append the immutable contribution first (frozen `power`, decay applied on read).
+  await insertHexContribution(client, {
+    userId: user.userId,
+    sessionId: session.id,
+    h3,
+    power: awarded,
+    board,
+  });
+
+  // Re-resolve the whole hex from the live ledger — now including the row above.
+  const contributions = await loadLiveContributions(client, [h3], board);
+  const powers = resolveHexPower(contributions.get(h3) ?? [], nowMs);
+  const resolved = resolveOwner(powers, minClaimPower());
+  const materialised = await loadOwnership(client, h3, board);
+
+  // The pure flip decision; only the writes below touch the database.
+  const decision = detectFlip(materialised, resolved);
+  if (decision.changed) {
+    if (resolved === null) await clearOwnership(client, h3, board);
+    else {await upsertOwnership(client, {
+        h3,
+        board,
+        ownerId: resolved.userId,
+        ownerPower: resolved.power,
+      });}
+  }
+  if (decision.flipped && resolved !== null) {
+    await insertFlip(client, {
+      h3,
+      board,
+      fromUserId: decision.fromUserId,
+      toUserId: resolved.userId,
+      atMs: nowMs,
+    });
+  }
+
+  const yourPower = powers.get(user.userId) ?? 0;
+  const captured = resolved !== null && resolved.userId === user.userId;
+  return {
+    h3,
+    captured,
+    // The hex's incumbent (winner) power, distinct from yourPower whenever the cell
+    // is contested — the whole point of returning both (consequences.ts STUB note).
+    power: resolved === null ? yourPower : resolved.power,
+    yourPower,
+  };
+}
 
 async function handleSubmit(req: Request, user: Authed): Promise<Consequences> {
   const client = db();
@@ -130,12 +217,30 @@ async function handleSubmit(req: Request, user: Authed): Promise<Consequences> {
   );
 
   // 9. C4. Territory resolution uses the SERVER-RECORDED start context, never
-  //    evidence.location — that is what makes the capture deterministic.
+  //    evidence.location — that is what makes the capture deterministic. The hex
+  //    half is real when `territory` is live (B-9); otherwise `hexResultOverride`
+  //    stays `undefined` and buildConsequences falls back to its documented stub.
+  //    A territory FAILURE degrades to `null` (scored, no capture) — never fails the
+  //    submit, because the score is already committed by recordOutcome above.
+  let hexResult: HexResultOut | null | undefined;
+  if (isLive("territory")) {
+    try {
+      hexResult = await resolveTerritory(client, user, session, score.awardedTotal);
+    } catch (failure) {
+      console.error(
+        "territory resolution failed; returning the scored session without a capture",
+        failure,
+      );
+      hexResult = null;
+    }
+  }
+
   return buildConsequences({
     h3: session.start_h3,
     spotId: session.spot_id,
     score,
     priorLifetimeXp: priorXp,
+    hexResultOverride: hexResult,
   });
 }
 
