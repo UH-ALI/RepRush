@@ -1,0 +1,123 @@
+{
+  "about": "Everything a machine-gunned replay trips at once, and the one fixture whose flag list is meant to look alarming. 500 ms cycles put the median under IMPOSSIBLE_CYCLE_MS (900) so tempoFactor is forced to the 0.5 floor; the 80 ms gaps are all under CADENCE_GAP_FLOOR_MS (400); and because the cadence is perfectly uniform and never slows, TEMPO_UNIFORM and NO_FATIGUE_DRIFT fire too. Still scored, still not rejected — I13.",
+  "gate": null,
+  "score": {
+    "rawTotal": 9.68,
+    "awardedTotal": 9.68,
+    "xp": 10,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 20,
+        "holdMs": 0,
+        "formFactor": 0.968,
+        "tempoFactor": 0.5,
+        "repScore": 9.68,
+        "cappedScore": 9.68,
+        "scored": true,
+        "romScores": [
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667,
+          0.866667
+        ],
+        "repFormFactors": [
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968,
+          0.968
+        ],
+        "tempo": {
+          "medianCycleMs": 500,
+          "meanCycleMs": 500,
+          "cycleCv": 0,
+          "fatigueSlope": 1,
+          "minGapMs": 80,
+          "subFloorGaps": 19,
+          "uniformityPenalty": 0.35,
+          "fatiguePenalty": 0.15,
+          "impossibleCadence": true,
+          "tempoFactor": 0.5
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "IMPOSSIBLE_CADENCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": null
+      },
+      {
+        "code": "TEMPO_UNIFORM",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": null
+      },
+      {
+        "code": "NO_FATIGUE_DRIFT",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": null
+      },
+      {
+        "code": "CADENCE_FLOOR",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": null
+      },
+      {
+        "code": "TRACE_MISSING",
+        "severity": "info",
+        "setIndex": 0,
+        "repIndex": null
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": null,
+      "repsChecked": 0,
+      "repsInsufficient": 0
+    }
+  ]
+}

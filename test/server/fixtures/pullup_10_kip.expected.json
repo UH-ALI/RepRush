@@ -1,0 +1,133 @@
+{
+  "about": "B18 in isolation. Ten pull-ups with hipDriftNorm ~0.45, at KIP_FULL (0.40), so every rep takes the maximum 0.35 dock — formFactor lands near 0.63 instead of 0.97. shoulderWristDyNorm is 0.12, under PULLUP_DY_LIMIT (0.25), so the confirming signal AGREES and PULLUP_UNCONFIRMED must not appear. Ten rep-scoped KIP_DETECTED flags and nothing else.",
+  "gate": null,
+  "score": {
+    "rawTotal": 11.094996,
+    "awardedTotal": 11.094996,
+    "xp": 11,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "pull_up",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1.8,
+        "unlocked": true,
+        "repCount": 10,
+        "holdMs": 0,
+        "formFactor": 0.616389,
+        "tempoFactor": 1,
+        "repScore": 11.094996,
+        "cappedScore": 11.094996,
+        "scored": true,
+        "romScores": [
+          0.740857,
+          0.710857,
+          0.733143,
+          0.79,
+          0.813429,
+          0.854286,
+          0.861714,
+          0.688857,
+          0.805143,
+          0.847143
+        ],
+        "repFormFactors": [
+          0.609574,
+          0.604894,
+          0.60837,
+          0.61724,
+          0.620895,
+          0.627269,
+          0.628427,
+          0.601462,
+          0.619602,
+          0.626154
+        ],
+        "tempo": {
+          "medianCycleMs": 2770,
+          "meanCycleMs": 2730,
+          "cycleCv": 0.107436,
+          "fatigueSlope": 1.253638,
+          "minGapMs": 900,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 0
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 1
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 2
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 3
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 4
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 5
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 6
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 7
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 8
+      },
+      {
+        "code": "KIP_DETECTED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 9
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": 10,
+      "repsChecked": 10,
+      "repsInsufficient": 0
+    }
+  ]
+}

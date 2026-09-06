@@ -1,0 +1,9 @@
+{
+  "about": "The only Class-1 gate failure in the set. Shape-perfect evidence claiming roughly three minutes of work, submitted 40 s after the session opened. checkWallClock compares two DURATIONS — claimed span against the server's own observed window — so no client clock is trusted and a spoofed epoch cancels out (I3). Rejected with 400 TIMELINE_OUT_OF_WINDOW before the scorer runs, before the session is consumed, and before anything is written. The golden has no score.",
+  "gate": {
+    "code": "TIMELINE_OUT_OF_WINDOW",
+    "status": 400
+  },
+  "score": null,
+  "traceChecks": []
+}

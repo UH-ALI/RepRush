@@ -1,0 +1,117 @@
+{
+  "about": "B16 in isolation. Eight pull-ups whose elbow angle says the rep happened but whose shoulderWristDyNorm (~0.32) says the wrist never collapsed toward the shoulder line, i.e. the chin probably never cleared the bar. Each rep is multiplied by PULLUP_UNCONFIRMED_FACTOR (0.75) and flagged. hipDriftNorm is 0.05, under KIP_FREE (0.15), so no kip dock — the two penalties are independent and this fixture must not mix them.",
+  "gate": null,
+  "score": {
+    "rawTotal": 10.046191,
+    "awardedTotal": 10.046191,
+    "xp": 10,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "pull_up",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1.8,
+        "unlocked": true,
+        "repCount": 8,
+        "holdMs": 0,
+        "formFactor": 0.697652,
+        "tempoFactor": 1,
+        "repScore": 10.046191,
+        "cappedScore": 10.046191,
+        "scored": true,
+        "romScores": [
+          0.76,
+          0.799714,
+          0.706571,
+          0.659429,
+          0.648571,
+          0.7,
+          0.697714,
+          0.701429
+        ],
+        "repFormFactors": [
+          0.7068,
+          0.713949,
+          0.697183,
+          0.688697,
+          0.686743,
+          0.696,
+          0.695589,
+          0.696257
+        ],
+        "tempo": {
+          "medianCycleMs": 2300,
+          "meanCycleMs": 2300,
+          "cycleCv": 0.116664,
+          "fatigueSlope": null,
+          "minGapMs": 850,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 0
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 1
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 2
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 3
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 4
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 5
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 6
+      },
+      {
+        "code": "PULLUP_UNCONFIRMED",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": 7
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": 8,
+      "repsChecked": 8,
+      "repsInsufficient": 0
+    }
+  ]
+}

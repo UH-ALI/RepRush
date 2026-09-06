@@ -1,0 +1,202 @@
+{
+  "about": "ROM as a grade, not a gate. Twelve reps that all cross enterPeak (110) so Track A legitimately counted them, but stop near 105 instead of reaching romTarget (80) — romScore around 0.15 instead of 0.95. No trace on the wire, which costs one info-severity TRACE_MISSING and nothing else: an absent trace must never lower a score.",
+  "evidence": {
+    "sessionId": "00000000-0000-4000-8000-000000000002",
+    "movementConfigVersion": "2026-08-30.1",
+    "clientVersion": "0.1.0+fixture",
+    "location": {
+      "lat": 51.5074,
+      "lng": -0.1278,
+      "accuracyM": 8,
+      "isMocked": false
+    },
+    "spotId": null,
+    "sets": [
+      {
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "startedAtMs": 3000,
+        "endedAtMs": 31400,
+        "capture": {
+          "fpsMean": 29.4,
+          "framesTotal": 835,
+          "framesDropped": 17,
+          "modelVariant": "base"
+        },
+        "calibration": {
+          "torsoLengthPx": 420,
+          "shoulderWidthPx": 260,
+          "restSignal": 175
+        },
+        "reps": [
+          {
+            "i": 0,
+            "tStartMs": 3500,
+            "tEndMs": 4855,
+            "restExtreme": 175,
+            "peakExtreme": 103.1,
+            "confMean": 0.8,
+            "confMin": 0.72,
+            "concentricMs": 610,
+            "eccentricMs": 745
+          },
+          {
+            "i": 1,
+            "tStartMs": 5355,
+            "tEndMs": 6890,
+            "restExtreme": 175,
+            "peakExtreme": 102.4,
+            "confMean": 0.86,
+            "confMin": 0.78,
+            "concentricMs": 691,
+            "eccentricMs": 844
+          },
+          {
+            "i": 2,
+            "tStartMs": 7390,
+            "tEndMs": 9105,
+            "restExtreme": 175,
+            "peakExtreme": 102.37,
+            "confMean": 0.858,
+            "confMin": 0.778,
+            "concentricMs": 772,
+            "eccentricMs": 943
+          },
+          {
+            "i": 3,
+            "tStartMs": 9605,
+            "tEndMs": 11500,
+            "restExtreme": 175,
+            "peakExtreme": 102.57,
+            "confMean": 0.798,
+            "confMin": 0.718,
+            "concentricMs": 853,
+            "eccentricMs": 1042
+          },
+          {
+            "i": 4,
+            "tStartMs": 12000,
+            "tEndMs": 13555,
+            "restExtreme": 175,
+            "peakExtreme": 103.43,
+            "confMean": 0.81,
+            "confMin": 0.73,
+            "concentricMs": 700,
+            "eccentricMs": 855
+          },
+          {
+            "i": 5,
+            "tStartMs": 14055,
+            "tEndMs": 15790,
+            "restExtreme": 175,
+            "peakExtreme": 107.79,
+            "confMean": 0.884,
+            "confMin": 0.804,
+            "concentricMs": 781,
+            "eccentricMs": 954
+          },
+          {
+            "i": 6,
+            "tStartMs": 16290,
+            "tEndMs": 18205,
+            "restExtreme": 175,
+            "peakExtreme": 102.64,
+            "confMean": 0.842,
+            "confMin": 0.762,
+            "concentricMs": 862,
+            "eccentricMs": 1053
+          },
+          {
+            "i": 7,
+            "tStartMs": 18705,
+            "tEndMs": 20800,
+            "restExtreme": 175,
+            "peakExtreme": 106.27,
+            "confMean": 0.836,
+            "confMin": 0.756,
+            "concentricMs": 943,
+            "eccentricMs": 1152
+          },
+          {
+            "i": 8,
+            "tStartMs": 21300,
+            "tEndMs": 23055,
+            "restExtreme": 175,
+            "peakExtreme": 102.77,
+            "confMean": 0.876,
+            "confMin": 0.796,
+            "concentricMs": 790,
+            "eccentricMs": 965
+          },
+          {
+            "i": 9,
+            "tStartMs": 23555,
+            "tEndMs": 25490,
+            "restExtreme": 175,
+            "peakExtreme": 103.91,
+            "confMean": 0.828,
+            "confMin": 0.748,
+            "concentricMs": 871,
+            "eccentricMs": 1064
+          },
+          {
+            "i": 10,
+            "tStartMs": 25990,
+            "tEndMs": 28105,
+            "restExtreme": 175,
+            "peakExtreme": 103.87,
+            "confMean": 0.874,
+            "confMin": 0.794,
+            "concentricMs": 952,
+            "eccentricMs": 1163
+          },
+          {
+            "i": 11,
+            "tStartMs": 28605,
+            "tEndMs": 30900,
+            "restExtreme": 175,
+            "peakExtreme": 103.15,
+            "confMean": 0.802,
+            "confMin": 0.722,
+            "concentricMs": 1033,
+            "eccentricMs": 1262
+          }
+        ],
+        "holdSegments": [],
+        "clientRepCount": 12
+      }
+    ]
+  },
+  "session": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "user_id": "11111111-1111-4111-8111-111111111111",
+    "status": "open",
+    "movement_config_version": "2026-08-30.1",
+    "server_start_ms": 1788598800000,
+    "submitted_at_ms": null,
+    "expires_at_ms": 1788613200000,
+    "start_lat": 51.5074,
+    "start_lng": -0.1278,
+    "start_accuracy_m": 8,
+    "start_is_mocked": false,
+    "start_h3": "8a2a1072b59ffff",
+    "spot_id": null,
+    "board": "production"
+  },
+  "submitAtMs": 1788598836400,
+  "context": {
+    "userId": "11111111-1111-4111-8111-111111111111",
+    "unlocked": [
+      "assisted_squat",
+      "squat",
+      "knee_push_up",
+      "push_up",
+      "dead_hang",
+      "pull_up",
+      "wall_sit",
+      "plank",
+      "jumping_jack"
+    ],
+    "alreadyEarnedToday": 0
+  }
+}

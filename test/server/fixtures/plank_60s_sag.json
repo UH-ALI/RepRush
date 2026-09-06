@@ -1,0 +1,87 @@
+{
+  "about": "The holdTime path, and the answer to api-contract.md:133. 25 s in form, a 3 s sag where the trunk left the 160-185 band (Track A stops accruing, so it is a gap, not a segment), 32 s back in form, then a 2 s micro-segment below MIN_HOLD_SEGMENT_MS (5000) that earns nothing. Two qualifying segments over 57 s: discount 1/1.1, bandScore 0.96, repEquivalents ~17.27. ZERO flags — a hold has no state machine, so the trace cross-check returns nothing, and there is no cadence to be robotic about, so there is no tempo term either.",
+  "evidence": {
+    "sessionId": "00000000-0000-4000-8000-000000000007",
+    "movementConfigVersion": "2026-08-30.1",
+    "clientVersion": "0.1.0+fixture",
+    "location": {
+      "lat": 51.5074,
+      "lng": -0.1278,
+      "accuracyM": 8,
+      "isMocked": false
+    },
+    "spotId": null,
+    "sets": [
+      {
+        "movementId": "plank",
+        "measurementType": "holdTime",
+        "startedAtMs": 3000,
+        "endedAtMs": 67000,
+        "capture": {
+          "fpsMean": 29.4,
+          "framesTotal": 1882,
+          "framesDropped": 38,
+          "modelVariant": "base"
+        },
+        "calibration": {
+          "torsoLengthPx": 420,
+          "shoulderWidthPx": 260,
+          "restSignal": 178
+        },
+        "reps": [],
+        "holdSegments": [
+          {
+            "tStartMs": 3500,
+            "tEndMs": 28500,
+            "meanSignal": 173,
+            "confMean": 0.88
+          },
+          {
+            "tStartMs": 31500,
+            "tEndMs": 63500,
+            "meanSignal": 171,
+            "confMean": 0.84
+          },
+          {
+            "tStartMs": 64500,
+            "tEndMs": 66500,
+            "meanSignal": 169,
+            "confMean": 0.79
+          }
+        ]
+      }
+    ]
+  },
+  "session": {
+    "id": "00000000-0000-4000-8000-000000000007",
+    "user_id": "11111111-1111-4111-8111-111111111111",
+    "status": "open",
+    "movement_config_version": "2026-08-30.1",
+    "server_start_ms": 1788598800000,
+    "submitted_at_ms": null,
+    "expires_at_ms": 1788613200000,
+    "start_lat": 51.5074,
+    "start_lng": -0.1278,
+    "start_accuracy_m": 8,
+    "start_is_mocked": false,
+    "start_h3": "8a2a1072b59ffff",
+    "spot_id": null,
+    "board": "production"
+  },
+  "submitAtMs": 1788598872000,
+  "context": {
+    "userId": "11111111-1111-4111-8111-111111111111",
+    "unlocked": [
+      "assisted_squat",
+      "squat",
+      "knee_push_up",
+      "push_up",
+      "dead_hang",
+      "pull_up",
+      "wall_sit",
+      "plank",
+      "jumping_jack"
+    ],
+    "alreadyEarnedToday": 0
+  }
+}

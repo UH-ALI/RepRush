@@ -1,0 +1,59 @@
+{
+  "about": "The holdTime path, and the answer to api-contract.md:133. 25 s in form, a 3 s sag where the trunk left the 160-185 band (Track A stops accruing, so it is a gap, not a segment), 32 s back in form, then a 2 s micro-segment below MIN_HOLD_SEGMENT_MS (5000) that earns nothing. Two qualifying segments over 57 s: discount 1/1.1, bandScore 0.96, repEquivalents ~17.27. ZERO flags — a hold has no state machine, so the trace cross-check returns nothing, and there is no cadence to be robotic about, so there is no tempo term either.",
+  "gate": null,
+  "score": {
+    "rawTotal": 17.106909,
+    "awardedTotal": 17.106909,
+    "xp": 17,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "plank",
+        "measurementType": "holdTime",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 0,
+        "holdMs": 57000,
+        "formFactor": 0.9904,
+        "tempoFactor": 1,
+        "repScore": 17.106909,
+        "cappedScore": 17.106909,
+        "scored": true,
+        "romScores": [],
+        "repFormFactors": [],
+        "tempo": {
+          "medianCycleMs": null,
+          "meanCycleMs": null,
+          "cycleCv": null,
+          "fatigueSlope": null,
+          "minGapMs": null,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": {
+          "segmentsTotal": 3,
+          "qualifyingSegments": 2,
+          "qualifyingMs": 57000,
+          "discount": 0.909091,
+          "bandScore": 0.96,
+          "confScore": 1,
+          "formFactor": 0.9904,
+          "repEquivalents": 17.272727
+        }
+      }
+    ],
+    "flags": []
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": null,
+      "repsChecked": 0,
+      "repsInsufficient": 0
+    }
+  ]
+}

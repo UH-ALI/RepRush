@@ -1,0 +1,75 @@
+{
+  "about": "Bots are metronomes. Eight cycles of exactly 2000 ms give cycleCv 0, so uniformityPenalty saturates at 0.35 and tempoFactor is exactly 0.65. Eight reps is deliberately below MIN_REPS_FOR_FATIGUE (10): NO_FATIGUE_DRIFT must NOT fire, because a set this short has no first and last third to compare and absence of evidence is not evidence of a bot.",
+  "gate": null,
+  "score": {
+    "rawTotal": 4.992,
+    "awardedTotal": 4.992,
+    "xp": 5,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 8,
+        "holdMs": 0,
+        "formFactor": 0.96,
+        "tempoFactor": 0.65,
+        "repScore": 4.992,
+        "cappedScore": 4.992,
+        "scored": true,
+        "romScores": [
+          0.833333,
+          0.833333,
+          0.833333,
+          0.833333,
+          0.833333,
+          0.833333,
+          0.833333,
+          0.833333
+        ],
+        "repFormFactors": [
+          0.96,
+          0.96,
+          0.96,
+          0.96,
+          0.96,
+          0.96,
+          0.96,
+          0.96
+        ],
+        "tempo": {
+          "medianCycleMs": 2000,
+          "meanCycleMs": 2000,
+          "cycleCv": 0,
+          "fatigueSlope": null,
+          "minGapMs": 800,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0.35,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 0.65
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "TEMPO_UNIFORM",
+        "severity": "warn",
+        "setIndex": 0,
+        "repIndex": null
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": 8,
+      "repsChecked": 8,
+      "repsInsufficient": 0
+    }
+  ]
+}

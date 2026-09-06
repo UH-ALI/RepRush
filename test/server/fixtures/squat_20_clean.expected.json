@@ -1,0 +1,92 @@
+{
+  "about": "The happy path, and the only fixture that must produce ZERO flags. Twenty deep squats (romScore ~0.9), high confidence, natural tempo spread and fatigue drift, and a 5 Hz trace that agrees with every claimed peak. tempoFactor 1.0, no cap, nothing to shadow-flag. If this golden ever grows a flag, something upstream changed and every other fixture's expectations need re-reading.",
+  "gate": null,
+  "score": {
+    "rawTotal": 19.63992,
+    "awardedTotal": 19.63992,
+    "xp": 20,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 20,
+        "holdMs": 0,
+        "formFactor": 0.981996,
+        "tempoFactor": 1,
+        "repScore": 19.63992,
+        "cappedScore": 19.63992,
+        "scored": true,
+        "romScores": [
+          0.923667,
+          0.831333,
+          0.900333,
+          0.956,
+          0.999,
+          1,
+          0.877333,
+          0.91,
+          0.865667,
+          0.953667,
+          1,
+          1,
+          0.931667,
+          0.989333,
+          0.916333,
+          0.858667,
+          0.884667,
+          0.946,
+          0.950667,
+          0.805333
+        ],
+        "repFormFactors": [
+          0.98168,
+          0.95952,
+          0.97608,
+          0.98944,
+          0.99976,
+          1,
+          0.97056,
+          0.9784,
+          0.96776,
+          0.98888,
+          1,
+          1,
+          0.9836,
+          0.99744,
+          0.97992,
+          0.96608,
+          0.97232,
+          0.98704,
+          0.98816,
+          0.95328
+        ],
+        "tempo": {
+          "medianCycleMs": 2280,
+          "meanCycleMs": 2280,
+          "cycleCv": 0.126511,
+          "fatigueSlope": 1.326531,
+          "minGapMs": 600,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      }
+    ],
+    "flags": []
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": 20,
+      "repsChecked": 20,
+      "repsInsufficient": 0
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://deno.land/x/deno/cli/schemas/config.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true
+  },
+  "include": [
+    "supabase/functions/**/*.ts",
+    "test/server/**/*.ts",
+    "tool/**/*.ts"
+  ],
+  "exclude": [
+    "build/**",
+    ".dart_tool/**",
+    "supabase/.temp/**"
+  ],
+  "fmt": {
+    "include": ["supabase/", "test/server/", "tool/"],
+    "lineWidth": 100,
+    "singleQuote": false,
+    "semiColons": true
+  },
+  "lint": {
+    "include": ["supabase/", "test/server/", "tool/"],
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "tasks": {
+    "check": "deno check supabase/functions/**/*.ts test/server/**/*.ts tool/**/*.ts",
+    "fmt": "deno fmt supabase test/server tool",
+    "fmt:check": "deno fmt --check supabase test/server tool",
+    "lint": "deno lint supabase test/server tool",
+    "test": "deno run --allow-read test/server/run_tests.ts",
+    "test:node": "node test/server/run_tests.ts",
+    "fixtures": "deno run --allow-read --allow-write test/server/tools/build_fixtures.ts",
+    "fixtures:node": "node test/server/tools/build_fixtures.ts",
+    "submit": "deno run --allow-net --allow-env --allow-read tool/submit_fixture.ts",
+    "submit:node": "node tool/submit_fixture.ts",
+    "c4": "deno run --allow-read tool/c4_payloads.ts",
+    "c4:node": "node tool/c4_payloads.ts"
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "about": "Why the trace earns its bytes. The per-rep summary claims twelve deep squats; the 5 Hz trace shows seven bumps, three DEEPER than claimed (TRACE_PEAK_INCONSISTENT — 5 Hz can miss a peak but can never invent a deeper one, so this is physically impossible), four far too shallow and five windows with no movement at all (TRACE_PEAK_OUT_OF_TOLERANCE), and a crossing count of 3 against 12 claimed reps (TRACE_REP_COUNT_DIVERGENT). Thirteen contradiction-severity flags — and the score is computed from the summary anyway and is HIGH. Nothing here rejects or discounts; a human reads session_flags afterwards and calls void_session(). I13.",
+  "gate": null,
+  "score": {
+    "rawTotal": 11.808,
+    "awardedTotal": 11.808,
+    "xp": 12,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 12,
+        "holdMs": 0,
+        "formFactor": 0.984,
+        "tempoFactor": 1,
+        "repScore": 11.808,
+        "cappedScore": 11.808,
+        "scored": true,
+        "romScores": [
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333,
+          0.933333
+        ],
+        "repFormFactors": [
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984,
+          0.984
+        ],
+        "tempo": {
+          "medianCycleMs": 2302.5,
+          "meanCycleMs": 2302.5,
+          "cycleCv": 0.122686,
+          "fatigueSlope": 1.211285,
+          "minGapMs": 650,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "TRACE_PEAK_INCONSISTENT",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 0
+      },
+      {
+        "code": "TRACE_PEAK_INCONSISTENT",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 1
+      },
+      {
+        "code": "TRACE_PEAK_INCONSISTENT",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 2
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 3
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 4
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 5
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 6
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 7
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 8
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 9
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 10
+      },
+      {
+        "code": "TRACE_PEAK_OUT_OF_TOLERANCE",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": 11
+      },
+      {
+        "code": "TRACE_REP_COUNT_DIVERGENT",
+        "severity": "contradiction",
+        "setIndex": 0,
+        "repIndex": null
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": 3,
+      "repsChecked": 12,
+      "repsInsufficient": 0
+    }
+  ]
+}

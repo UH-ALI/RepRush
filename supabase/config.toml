@@ -1,0 +1,51 @@
+# Local development config. Anything omitted falls back to the CLI's default, so
+# this file only states what must NOT be the default plus the ports worth pinning.
+#
+# `supabase init` would have generated a much longer file. Do not paste one over
+# this: the only setting here that carries a decision is `verify_jwt`, and a
+# generated file would reset it to true and silently break the error contract.
+
+project_id = "reprush"
+
+[api]
+enabled = true
+# The port every Edge Function is served on locally:
+#   http://127.0.0.1:54321/functions/v1/<name>
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+# ---------------------------------------------------------------------------
+# Edge Functions — verify_jwt is FALSE on every route, deliberately.
+# ---------------------------------------------------------------------------
+# When the runtime verifies the JWT it rejects a bad token with its own bare 401:
+# no CORS headers and no `{ code, message }` body. The Flutter client cannot parse
+# that and would surface an opaque network failure exactly where the contract
+# promises `401 UNAUTHENTICATED` (api-contract.md §Common rules).
+#
+# Each route calls `requireUser()` in `_shared/auth.ts` instead, which round-trips
+# to `auth.getUser` and throws into the shared envelope. The functions are still
+# not public: no route does anything before it has a resolved user id.
+[functions.session-start]
+verify_jwt = false
+
+[functions.session-submit]
+verify_jwt = false
+
+[functions.movements]
+verify_jwt = false
+
+# Anonymous sign-in (A1 / backend-scaffolding.md §5) is a GoTrue provider setting,
+# not a config.toml key: enable it in the dashboard under Auth → Providers. Without
+# it a judge hits a signup wall, which is the one failure the guest-first decision
+# exists to prevent.

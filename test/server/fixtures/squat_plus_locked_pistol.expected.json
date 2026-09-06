@@ -1,0 +1,153 @@
+{
+  "about": "I10, and per-set independence. Two sets in one session: an honest unlocked squat, then a textbook pistol squat the account has never earned. The pistol set is deep, confident and well-paced, and it scores EXACTLY ZERO — not a rejection, not a discount, zero, with MOVEMENT_NOT_UNLOCKED recording the forgone score. The squat set still banks in full, so rawTotal is the squat alone. Also the only multi-set fixture: it pins the wall-clock gate's max(endedAtMs) across sets rather than within one.",
+  "gate": null,
+  "score": {
+    "rawTotal": 19.63992,
+    "awardedTotal": 19.63992,
+    "xp": 20,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 20,
+        "holdMs": 0,
+        "formFactor": 0.981996,
+        "tempoFactor": 1,
+        "repScore": 19.63992,
+        "cappedScore": 19.63992,
+        "scored": true,
+        "romScores": [
+          0.923667,
+          0.831333,
+          0.900333,
+          0.956,
+          0.999,
+          1,
+          0.877333,
+          0.91,
+          0.865667,
+          0.953667,
+          1,
+          1,
+          0.931667,
+          0.989333,
+          0.916333,
+          0.858667,
+          0.884667,
+          0.946,
+          0.950667,
+          0.805333
+        ],
+        "repFormFactors": [
+          0.98168,
+          0.95952,
+          0.97608,
+          0.98944,
+          0.99976,
+          1,
+          0.97056,
+          0.9784,
+          0.96776,
+          0.98888,
+          1,
+          1,
+          0.9836,
+          0.99744,
+          0.97992,
+          0.96608,
+          0.97232,
+          0.98704,
+          0.98816,
+          0.95328
+        ],
+        "tempo": {
+          "medianCycleMs": 2280,
+          "meanCycleMs": 2280,
+          "cycleCv": 0.126511,
+          "fatigueSlope": 1.326531,
+          "minGapMs": 600,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      },
+      {
+        "setIndex": 1,
+        "movementId": "pistol_squat",
+        "measurementType": "repBodyweight",
+        "tier": 4,
+        "difficulty": 2.4,
+        "unlocked": false,
+        "repCount": 5,
+        "holdMs": 0,
+        "formFactor": 1,
+        "tempoFactor": 1,
+        "repScore": 12,
+        "cappedScore": 0,
+        "scored": false,
+        "romScores": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "repFormFactors": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tempo": {
+          "medianCycleMs": 3130,
+          "meanCycleMs": 3242,
+          "cycleCv": 0.103051,
+          "fatigueSlope": null,
+          "minGapMs": 1200,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "MOVEMENT_NOT_UNLOCKED",
+        "severity": "warn",
+        "setIndex": 1,
+        "repIndex": null
+      },
+      {
+        "code": "TRACE_MISSING",
+        "severity": "info",
+        "setIndex": 1,
+        "repIndex": null
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": 20,
+      "repsChecked": 20,
+      "repsInsufficient": 0
+    },
+    {
+      "setIndex": 1,
+      "traceReps": null,
+      "repsChecked": 0,
+      "repsInsufficient": 0
+    }
+  ]
+}

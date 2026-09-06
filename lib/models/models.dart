@@ -4,6 +4,14 @@
 /// Ownership: B. Field names mirror the endpoint register (§endpoints) and the
 /// Evidence shape (§evidence) verbatim. Do not add fields that the contract
 /// does not name — additive contract changes are announced in standup.
+///
+/// Serialization is hand-written `fromJson`/`toJson` per
+/// [backend-scaffolding.md §8](../../docs/backend-scaffolding.md) — codegen is
+/// explicitly ruled out for a seven-day build. Only the session types carry it so
+/// far, because they are the only ones with a server behind them
+/// (`supabase/functions/session-start`, `session-submit`); the `_as*` helpers
+/// below are what the remaining types should reuse rather than reinvent.
+/// Round-trip convention, also §8: `fromJson(x).toJson() == x`.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -19,14 +27,53 @@ class ApiException implements Exception {
     required this.code,
     required this.message,
     this.statusCode = 400,
+    this.unknownCode = false,
   });
 
   final String code;
   final String message;
   final int statusCode;
 
+  /// True when the server sent a code this client has never heard of. Set only by
+  /// [ApiException.fromResponse]; the stubs throw known codes by construction.
+  final bool unknownCode;
+
+  /// Parses the contract's error envelope — `{ code, message }` on every 4xx
+  /// (§endpoints · Common rules).
+  ///
+  /// Tolerates a body that is not that envelope. A Supabase 502 page or a proxy
+  /// error arrives as a bare string, and throwing *while handling an error
+  /// response* replaces a diagnosable failure with an undiagnosable one — the
+  /// status code is still a fact, so it goes in the message instead.
+  factory ApiException.fromResponse({required int statusCode, Object? body}) {
+    if (body is! Map) {
+      return ApiException(
+        code: ApiErrorCode.internal,
+        message: 'HTTP $statusCode with no JSON error envelope.',
+        statusCode: statusCode,
+      );
+    }
+    final envelope = _asMap(body, 'error envelope');
+    final code =
+        _asStringOrNull(envelope['code'], 'code') ?? ApiErrorCode.internal;
+    return ApiException(
+      code: code,
+      message:
+          _asStringOrNull(envelope['message'], 'message') ??
+          'HTTP $statusCode, code $code, no message.',
+      statusCode: statusCode,
+      unknownCode: !ApiErrorCode.isKnown(code),
+    );
+  }
+
   @override
-  String toString() => 'ApiException($code): $message';
+  String toString() {
+    // Spelled out rather than nested inside the interpolation: a string literal
+    // inside `${}` of a same-quoted string is legal Dart, but nobody should have
+    // to know that while reading an error path at 2am.
+    final marker = unknownCode ? ', UNKNOWN CODE' : '';
+    return 'ApiException($code$marker): $message';
+  }
 }
 
 /// The stable error codes named across the endpoint register.
@@ -50,7 +97,131 @@ abstract final class ApiErrorCode {
   static const notComplete = 'NOT_COMPLETE';
   static const alreadyClaimed = 'ALREADY_CLAIMED';
   static const attestationInvalid = 'ATTESTATION_INVALID';
+
+  // Introduced by the count-and-verify backend, which keeps its own table in
+  // `supabase/functions/_shared/responses.ts` and says the two "MUST stay in
+  // sync". Each exists because a route has to say something the endpoint
+  // register did not anticipate.
+  static const unknownSession = 'UNKNOWN_SESSION';
+  static const evidenceMalformed = 'EVIDENCE_MALFORMED';
+  static const malformedRequest = 'MALFORMED_REQUEST';
+  static const rateLimited = 'RATE_LIMITED';
+  static const scoringFailed = 'SCORING_FAILED';
+  static const internal = 'INTERNAL';
+
+  /// Every code above. Kept adjacent to them on purpose: adding a constant
+  /// without adding it here makes [isKnown] report a contract-code as unknown,
+  /// which is a loud failure rather than a silent one.
+  static const Set<String> all = {
+    unauthenticated,
+    gpsTooInaccurate,
+    implausibleTravel,
+    mockedLocationRejected,
+    sessionAlreadyUsed,
+    sessionExpired,
+    timelineOutOfWindow,
+    configVersionMismatch,
+    sessionContextMismatch,
+    bboxTooLarge,
+    unknownHex,
+    radiusTooLarge,
+    unknownSpotType,
+    spotTooClose,
+    outOfProximity,
+    unknownTab,
+    notComplete,
+    alreadyClaimed,
+    attestationInvalid,
+    unknownSession,
+    evidenceMalformed,
+    malformedRequest,
+    rateLimited,
+    scoringFailed,
+    internal,
+  };
+
+  /// §Common rules: "Unknown codes are a contract bug — report them, don't guess
+  /// at handling." This is the check that makes "report them" possible; without
+  /// it the only option is a switch statement that quietly swallows anything new.
+  static bool isKnown(String code) => all.contains(code);
 }
+
+// ---------------------------------------------------------------------------
+// JSON coercion — the only place a wire value becomes a Dart value
+// ---------------------------------------------------------------------------
+//
+// Two rules, both learned from the server rather than assumed:
+//
+//   1. NEVER `as double` on a JSON number. JSON has one number type and Dart has
+//      two, so a whole-valued double arrives as an `int`. This is reachable, not
+//      theoretical: a fully penalised set awards exactly 20 reps × 0.60
+//      formFactor floor × 0.50 tempo floor = 6, and the backend emits
+//      `{"power":6}`. `json['power'] as double` throws on that, and so does
+//      every `PersonalRecord.value` for a max-reps PR.
+//   2. A malformed payload throws `FormatException` naming the field. A bare
+//      "type 'int' is not a subtype of type 'double' in type cast" is not
+//      debuggable on stage; "hexResult.power: expected a number, got String
+//      (null)" is.
+
+FormatException _bad(String field, Object? value, String want) =>
+    FormatException(
+      '$field: expected $want, got ${value.runtimeType} ($value)',
+    );
+
+Map<String, Object?> _asMap(Object? json, String field) {
+  if (json is Map<String, Object?>) return json;
+  if (json is Map) return Map<String, Object?>.from(json);
+  throw _bad(field, json, 'an object');
+}
+
+Map<String, Object?>? _asMapOrNull(Object? json, String field) =>
+    json == null ? null : _asMap(json, field);
+
+List<Object?> _asList(Object? json, String field) {
+  if (json is List<Object?>) return json;
+  if (json is List) return List<Object?>.from(json);
+  throw _bad(field, json, 'an array');
+}
+
+List<String> _asStringList(Object? json, String field) => _asList(
+  json,
+  field,
+).map((e) => _asString(e, '$field[]')).toList(growable: false);
+
+double _asDouble(Object? json, String field) {
+  if (json is double) return json;
+  if (json is int) return json.toDouble();
+  throw _bad(field, json, 'a number');
+}
+
+/// Whole numbers only, and a fractional value is an error rather than a silent
+/// truncation — `xp: 6.5` means the server broke its own `Math.round`, and
+/// rounding it away here would hide that.
+int _asInt(Object? json, String field) {
+  if (json is int) return json;
+  if (json is double && json == json.roundToDouble()) return json.round();
+  throw _bad(field, json, 'a whole number');
+}
+
+String _asString(Object? json, String field) {
+  if (json is String) return json;
+  throw _bad(field, json, 'a string');
+}
+
+String? _asStringOrNull(Object? json, String field) =>
+    json == null ? null : _asString(json, field);
+
+bool _asBool(Object? json, String field) {
+  if (json is bool) return json;
+  throw _bad(field, json, 'a boolean');
+}
+
+/// For the flags the server defaults rather than requires. `isMocked` and
+/// `voided` are both read this way because `parseStartRequest` treats a missing
+/// `isMocked` as `false` — a client that demanded the key would fail to read its
+/// own request echoed back.
+bool _asBoolOr(Object? json, String field, bool fallback) =>
+    json == null ? fallback : _asBool(json, field);
 
 // ---------------------------------------------------------------------------
 // Geo — plain coordinates; H3 is computed server-side (requirements.md §8)
@@ -85,6 +256,25 @@ class SessionLocation {
   final double lng;
   final double accuracyM;
   final bool isMocked;
+
+  /// The `location` block of a `POST /session/start` request body, whose full
+  /// shape is `{ "location": {...}, "spotId": null }` (§endpoints).
+  Map<String, Object?> toJson() => <String, Object?>{
+    'lat': lat,
+    'lng': lng,
+    'accuracyM': accuracyM,
+    'isMocked': isMocked,
+  };
+
+  factory SessionLocation.fromJson(Object? json) {
+    final map = _asMap(json, 'location');
+    return SessionLocation(
+      lat: _asDouble(map['lat'], 'location.lat'),
+      lng: _asDouble(map['lng'], 'location.lng'),
+      accuracyM: _asDouble(map['accuracyM'], 'location.accuracyM'),
+      isMocked: _asBoolOr(map['isMocked'], 'location.isMocked', false),
+    );
+  }
 }
 
 /// Response of `POST /session/start` — the session-start context that submit
@@ -110,6 +300,36 @@ class SessionStart {
   final String hexH3;
   final String? spotId;
   final int expiresAtMs;
+
+  /// Reads the `POST /session/start` response.
+  ///
+  /// `serverStartMs` and `expiresAtMs` are the only two absolute epoch values the
+  /// client ever receives — every `*Ms` inside Evidence is an OFFSET from session
+  /// start, which is what makes the wall-clock check immune to a spoofed client
+  /// clock (I3). Do not mix the two conventions.
+  factory SessionStart.fromJson(Object? json) {
+    final map = _asMap(json, 'session/start response');
+    return SessionStart(
+      sessionId: _asString(map['sessionId'], 'sessionId'),
+      serverStartMs: _asInt(map['serverStartMs'], 'serverStartMs'),
+      movementConfigVersion: _asString(
+        map['movementConfigVersion'],
+        'movementConfigVersion',
+      ),
+      hexH3: _asString(map['hexH3'], 'hexH3'),
+      spotId: _asStringOrNull(map['spotId'], 'spotId'),
+      expiresAtMs: _asInt(map['expiresAtMs'], 'expiresAtMs'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'sessionId': sessionId,
+    'serverStartMs': serverStartMs,
+    'movementConfigVersion': movementConfigVersion,
+    'hexH3': hexH3,
+    'spotId': spotId,
+    'expiresAtMs': expiresAtMs,
+  };
 }
 
 /// Consequence sub-records of a submission. The contract names the top-level
@@ -127,6 +347,23 @@ class HexResult {
   final bool captured;
   final double power;
   final double yourPower;
+
+  factory HexResult.fromJson(Object? json) {
+    final map = _asMap(json, 'hexResult');
+    return HexResult(
+      h3: _asString(map['h3'], 'hexResult.h3'),
+      captured: _asBool(map['captured'], 'hexResult.captured'),
+      power: _asDouble(map['power'], 'hexResult.power'),
+      yourPower: _asDouble(map['yourPower'], 'hexResult.yourPower'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'h3': h3,
+    'captured': captured,
+    'power': power,
+    'yourPower': yourPower,
+  };
 }
 
 @immutable
@@ -140,6 +377,21 @@ class SpotResult {
   final String spotId;
   final bool captured;
   final int rank;
+
+  factory SpotResult.fromJson(Object? json) {
+    final map = _asMap(json, 'spotResult');
+    return SpotResult(
+      spotId: _asString(map['spotId'], 'spotResult.spotId'),
+      captured: _asBool(map['captured'], 'spotResult.captured'),
+      rank: _asInt(map['rank'], 'spotResult.rank'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'spotId': spotId,
+    'captured': captured,
+    'rank': rank,
+  };
 }
 
 @immutable
@@ -148,6 +400,19 @@ class RankChange {
 
   final int before;
   final int after;
+
+  factory RankChange.fromJson(Object? json) {
+    final map = _asMap(json, 'rankChange');
+    return RankChange(
+      before: _asInt(map['before'], 'rankChange.before'),
+      after: _asInt(map['after'], 'rankChange.after'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'before': before,
+    'after': after,
+  };
 }
 
 @immutable
@@ -163,6 +428,21 @@ class PersonalRecord {
   /// max reps / max hold / hardest tier (requirements.md E5).
   final String metric;
   final double value;
+
+  factory PersonalRecord.fromJson(Object? json) {
+    final map = _asMap(json, 'prs[]');
+    return PersonalRecord(
+      movementId: _asString(map['movementId'], 'prs[].movementId'),
+      metric: _asString(map['metric'], 'prs[].metric'),
+      value: _asDouble(map['value'], 'prs[].value'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'movementId': movementId,
+    'metric': metric,
+    'value': value,
+  };
 }
 
 /// Response of `POST /session/submit` — **all consequences in one response**
@@ -195,6 +475,51 @@ class SubmitResult {
   final List<PersonalRecord> prs;
   final List<String> achievements;
   final bool voided;
+
+  /// Reads the C4 everything-response of `POST /session/submit`.
+  ///
+  /// `hexResult`, `spotResult` and `rankChange` are genuinely nullable on the
+  /// wire, not merely absent when unimplemented: the backend returns `null` for a
+  /// session that awarded nothing, because a hexResult carrying `power: 0` would
+  /// make the summary screen celebrate a capture that did not happen. Treat null
+  /// as "no territory changed" and never as a parsing failure.
+  factory SubmitResult.fromJson(Object? json) {
+    final map = _asMap(json, 'session/submit response');
+    final hex = _asMapOrNull(map['hexResult'], 'hexResult');
+    final spot = _asMapOrNull(map['spotResult'], 'spotResult');
+    final rank = _asMapOrNull(map['rankChange'], 'rankChange');
+    return SubmitResult(
+      xp: _asInt(map['xp'], 'xp'),
+      level: _asInt(map['level'], 'level'),
+      levelUps: _asList(
+        map['levelUps'],
+        'levelUps',
+      ).map((e) => _asInt(e, 'levelUps[]')).toList(growable: false),
+      hexResult: hex == null ? null : HexResult.fromJson(hex),
+      spotResult: spot == null ? null : SpotResult.fromJson(spot),
+      rankChange: rank == null ? null : RankChange.fromJson(rank),
+      unlocks: _asStringList(map['unlocks'], 'unlocks'),
+      prs: _asList(
+        map['prs'],
+        'prs',
+      ).map((e) => PersonalRecord.fromJson(e)).toList(growable: false),
+      achievements: _asStringList(map['achievements'], 'achievements'),
+      voided: _asBoolOr(map['voided'], 'voided', false),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'xp': xp,
+    'level': level,
+    'levelUps': levelUps,
+    'hexResult': hexResult?.toJson(),
+    'spotResult': spotResult?.toJson(),
+    'rankChange': rankChange?.toJson(),
+    'unlocks': unlocks,
+    'prs': prs.map((p) => p.toJson()).toList(growable: false),
+    'achievements': achievements,
+    'voided': voided,
+  };
 }
 
 // ---------------------------------------------------------------------------

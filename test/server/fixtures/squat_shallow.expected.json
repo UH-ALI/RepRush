@@ -1,0 +1,83 @@
+{
+  "about": "ROM as a grade, not a gate. Twelve reps that all cross enterPeak (110) so Track A legitimately counted them, but stop near 105 instead of reaching romTarget (80) — romScore around 0.15 instead of 0.95. No trace on the wire, which costs one info-severity TRACE_MISSING and nothing else: an absent trace must never lower a score.",
+  "gate": null,
+  "score": {
+    "rawTotal": 9.72584,
+    "awardedTotal": 9.72584,
+    "xp": 10,
+    "sets": [
+      {
+        "setIndex": 0,
+        "movementId": "squat",
+        "measurementType": "repBodyweight",
+        "tier": 2,
+        "difficulty": 1,
+        "unlocked": true,
+        "repCount": 12,
+        "holdMs": 0,
+        "formFactor": 0.810487,
+        "tempoFactor": 1,
+        "repScore": 9.72584,
+        "cappedScore": 9.72584,
+        "scored": true,
+        "romScores": [
+          0.23,
+          0.253333,
+          0.254333,
+          0.247667,
+          0.219,
+          0.073667,
+          0.245333,
+          0.124333,
+          0.241,
+          0.203,
+          0.204333,
+          0.228333
+        ],
+        "repFormFactors": [
+          0.8152,
+          0.8208,
+          0.82104,
+          0.81944,
+          0.81256,
+          0.77768,
+          0.81888,
+          0.78984,
+          0.81784,
+          0.80872,
+          0.80904,
+          0.8148
+        ],
+        "tempo": {
+          "medianCycleMs": 1825,
+          "meanCycleMs": 1825,
+          "cycleCv": 0.142008,
+          "fatigueSlope": 1.246154,
+          "minGapMs": 500,
+          "subFloorGaps": 0,
+          "uniformityPenalty": 0,
+          "fatiguePenalty": 0,
+          "impossibleCadence": false,
+          "tempoFactor": 1
+        },
+        "hold": null
+      }
+    ],
+    "flags": [
+      {
+        "code": "TRACE_MISSING",
+        "severity": "info",
+        "setIndex": 0,
+        "repIndex": null
+      }
+    ]
+  },
+  "traceChecks": [
+    {
+      "setIndex": 0,
+      "traceReps": null,
+      "repsChecked": 0,
+      "repsInsufficient": 0
+    }
+  ]
+}
