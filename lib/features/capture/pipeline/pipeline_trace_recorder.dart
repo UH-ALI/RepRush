@@ -13,22 +13,18 @@ library;
 import 'dart:convert';
 
 import 'package:reprush/features/capture/pipeline/calibration.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/movement_config.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
-/// The six squat-chain joints whose raw likelihoods are logged — presence
-/// is not visibility, so the trace carries the likelihood values, not a
-/// boolean.
-const _squatJoints = [
-  'leftHip',
-  'leftKnee',
-  'leftAnkle',
-  'rightHip',
-  'rightKnee',
-  'rightAnkle',
-];
-
 class PipelineTraceRecorder {
+  /// [chain] selects which six joints' raw likelihoods are logged —
+  /// presence is not visibility, so the trace carries the likelihood
+  /// values, not a boolean.
+  PipelineTraceRecorder({JointChain chain = JointChain.leg})
+      : _joints = chain.landmarkKeys;
+
+  final List<String> _joints;
   final List<Map<String, Object?>> _entries = [];
   int? _lastTimestampMs;
 
@@ -58,7 +54,7 @@ class PipelineTraceRecorder {
       'visL': result.leftVisibility,
       'visR': result.rightVisibility,
       'joints': {
-        for (final joint in _squatJoints)
+        for (final joint in _joints)
           joint: frame.landmarks[joint]?.likelihood,
       },
       'raw': result.rawAngle,

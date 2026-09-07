@@ -11,7 +11,7 @@ import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/pipeline_trace_recorder.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
 LandmarkFrame _frame(int timestampMs) => LandmarkFrame(

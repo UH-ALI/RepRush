@@ -15,7 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/capture/data/capture_providers.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 
 /// Collapsible diagnostics overlay. Collapsed = one small chip; expanded
 /// = the full measurement grid + actions.

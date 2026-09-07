@@ -6,6 +6,7 @@
 library;
 
 import 'package:reprush/features/capture/pipeline/calibration.dart';
+import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
@@ -29,17 +30,19 @@ class FeedbackSnapshot {
 }
 
 /// Maps machine substates to a feedback level + cue. Pure and immediate —
-/// debounce timing is [FeedbackDebouncer]'s job.
+/// debounce timing is [FeedbackDebouncer]'s job. Wording comes from the
+/// movement's [FeedbackCues] (defaults: the squat-proven vocabulary).
 FeedbackSnapshot evaluateFeedback({
   required RepPhase phase,
   required bool trackingLost,
   required RepMachineResult? machineResult,
   String? activeSide,
+  FeedbackCues cues = FeedbackCues.standard,
 }) {
   if (trackingLost) {
-    return const FeedbackSnapshot(
+    return FeedbackSnapshot(
       level: FeedbackLevel.red,
-      cue: 'Tracking lost',
+      cue: cues.trackingLost,
     );
   }
   final result = machineResult;
@@ -47,7 +50,7 @@ FeedbackSnapshot evaluateFeedback({
     if (result.shallowReturn) {
       return FeedbackSnapshot(
         level: FeedbackLevel.red,
-        cue: 'Not counted — go lower next rep',
+        cue: cues.shallowReturn,
         shallowReturn: true,
         activeSide: activeSide,
       );
@@ -55,7 +58,7 @@ FeedbackSnapshot evaluateFeedback({
     if (result.emitted != null) {
       return FeedbackSnapshot(
         level: FeedbackLevel.green,
-        cue: 'Rep counted',
+        cue: cues.repCounted,
         repJustCounted: true,
         activeSide: activeSide,
       );
@@ -64,22 +67,22 @@ FeedbackSnapshot evaluateFeedback({
   return switch (phase) {
     RepPhase.rest => FeedbackSnapshot(
       level: FeedbackLevel.green,
-      cue: 'Ready',
+      cue: cues.ready,
       activeSide: activeSide,
     ),
     RepPhase.descending => FeedbackSnapshot(
       level: FeedbackLevel.amber,
-      cue: 'Go lower',
+      cue: cues.descending,
       activeSide: activeSide,
     ),
     RepPhase.depthReached => FeedbackSnapshot(
       level: FeedbackLevel.green,
-      cue: 'Good depth',
+      cue: cues.depthReached,
       activeSide: activeSide,
     ),
     RepPhase.ascending => FeedbackSnapshot(
       level: FeedbackLevel.green,
-      cue: 'Stand tall',
+      cue: cues.ascending,
       activeSide: activeSide,
     ),
   };
@@ -88,14 +91,14 @@ FeedbackSnapshot evaluateFeedback({
 /// Retry messaging for rejected calibration attempts — shown while the
 /// sample window re-collects. Pure so it stays testable alongside the
 /// rest of the feedback logic.
-String calibrationRejectionMessage(CalibrationRejectionReason reason) {
+String calibrationRejectionMessage(
+  CalibrationRejectionReason reason, {
+  FeedbackCues cues = FeedbackCues.standard,
+}) {
   return switch (reason) {
-    CalibrationRejectionReason.tooFewSamples =>
-      'Not enough steady frames yet — hold your position',
-    CalibrationRejectionReason.unstableRest =>
-      'Too much movement — stand still while we retry',
-    CalibrationRejectionReason.implausibleRest =>
-      'Stand side-on, straighten your legs, keep full body in frame — retrying',
+    CalibrationRejectionReason.tooFewSamples => cues.retryTooFewSamples,
+    CalibrationRejectionReason.unstableRest => cues.retryUnstableRest,
+    CalibrationRejectionReason.implausibleRest => cues.retryImplausibleRest,
   };
 }
 

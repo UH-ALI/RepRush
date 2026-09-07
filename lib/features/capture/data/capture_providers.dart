@@ -6,7 +6,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/features/capture/data/capture_controller.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 
 /// The capture funnel: camera frames → landmarks → preview state. Rep-event
 /// writing (§state rule 3) joins this controller later with Track A.

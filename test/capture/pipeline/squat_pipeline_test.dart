@@ -7,7 +7,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/features/capture/pipeline/calibration.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
 /// Builds a frame whose left AND right hip-knee-ankle chains produce the

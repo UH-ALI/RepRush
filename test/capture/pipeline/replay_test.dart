@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
 const _fixturesDir = 'test/capture/fixtures';

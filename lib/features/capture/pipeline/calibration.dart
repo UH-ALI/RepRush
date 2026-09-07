@@ -15,13 +15,18 @@ import 'package:reprush/features/capture/pipeline/movement_config.dart';
 
 /// Validation guards for the rest-pose calibration. These are QUALITY
 /// gates for the calibration window, not counting thresholds — the
-/// production counting values live in [squatConfig] and stay untouched.
-/// Grouped here in one place so tuning happens against measured
+/// production counting values live in the movement configs and stay
+/// untouched. Grouped here in one place so tuning happens against measured
 /// diagnostics, never against guesses.
+///
+/// The angle range covers any near-extended rest chain: a standing-straight
+/// knee reads ~165–180°, a locked-out elbow similar. (Rest poses far from
+/// full extension — e.g. hold movements — will need their own guard band
+/// when those pipelines land.)
 abstract final class CalibrationGuards {
-  /// A standing-straight knee angle reads ~165–180°. Below the floor the
-  /// athlete was mid-squat / knees bent; the frozen thresholds would be
-  /// biased low and "Go lower" would fire on honest depth.
+  /// A near-extended rest chain reads ~165–180°. Below the floor the
+  /// athlete was mid-rep (knees/elbows bent); the frozen thresholds
+  /// would be biased low and "Go lower" would fire on honest depth.
   static const double minRestAngle = 145;
 
   /// Geometric maximum is 180°; a small margin absorbs landmark jitter.
@@ -49,7 +54,8 @@ class CalibrationResult {
     this.shoulderWidthPx,
   });
 
-  /// Median rest-pose knee angle (≈175° standing for squat).
+  /// Median rest-pose signal — the calibrated joint angle (≈175° standing
+  /// for squat, ≈170° locked-out for an arm chain).
   final double restSignal;
 
   /// REST → DESCENDING gate: `restSignal + startDescentOffset`.
@@ -105,7 +111,8 @@ final class CalibrationRejected extends CalibrationOutcome {
   final double? spread;
 }
 
-/// Accumulates rest-pose knee-angle samples and freezes thresholds.
+/// Accumulates rest-pose signal (joint-angle) samples and freezes
+/// thresholds.
 class CalibrationCapture {
   CalibrationCapture(this.config);
 
@@ -125,11 +132,11 @@ class CalibrationCapture {
   int get shoulderSampleCount => _shoulderWidths.length;
 
   void addSample({
-    required double kneeAngle,
+    required double signal,
     double? torsoLengthPx,
     double? shoulderWidthPx,
   }) {
-    _samples.add(kneeAngle);
+    _samples.add(signal);
     if (torsoLengthPx != null &&
         torsoLengthPx.isFinite &&
         torsoLengthPx > 0) {

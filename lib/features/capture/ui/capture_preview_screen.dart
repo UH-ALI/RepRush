@@ -18,7 +18,7 @@ import 'package:reprush/features/capture/data/capture_controller.dart';
 import 'package:reprush/features/capture/data/capture_providers.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 import 'package:reprush/features/capture/ui/debug_panel.dart';
 import 'package:reprush/features/capture/ui/skeleton_overlay.dart';

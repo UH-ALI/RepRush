@@ -1,6 +1,7 @@
-/// Squat pipeline orchestrator — one entry point that composes side
-/// selection, angle math, smoothing, calibration, the rep machine, and
-/// feedback into a single per-frame result.
+/// Rep pipeline orchestrator — one entry point that composes side
+/// selection, joint-angle math, smoothing, calibration, the rep machine,
+/// and feedback into a single per-frame result. Generic over the
+/// movement's 3-point joint chain (leg / arm) via [MovementConfig].
 ///
 /// Ownership: A. Purity rule: plain Dart only.
 library;
@@ -54,7 +55,7 @@ class PipelineFrame {
   /// 0.0 → 1.0 while calibrating, 1.0 once counting.
   final double calibrationProgress;
 
-  /// Frozen thresholds once calibration is accepted — rest angle plus the
+  /// Frozen thresholds once calibration is accepted — rest signal plus the
   /// four gates. Null while calibrating. Debug-panel + diagnostics only;
   /// never serialized into Evidence.
   final CalibrationResult? calibration;
@@ -78,8 +79,10 @@ class PipelineFrame {
 }
 
 /// Two-phase pipeline: CALIBRATING (collect rest samples) then COUNTING.
-class SquatPipeline {
-  SquatPipeline(this.config) : _calibration = CalibrationCapture(config);
+/// The movement's [MovementConfig] supplies the joint chain, thresholds,
+/// and coaching vocabulary — the engine itself is movement-agnostic.
+class RepPipeline {
+  RepPipeline(this.config) : _calibration = CalibrationCapture(config);
 
   final MovementConfig config;
 
@@ -130,12 +133,14 @@ class SquatPipeline {
   PipelineFrame tick(LandmarkFrame frame) {
     final vis = sideVisibilities(
       frame.landmarks,
+      chain: config.chain,
       imageWidth: frame.imageWidth,
       imageHeight: frame.imageHeight,
     );
     final selected = stickySelectSide(
       frame.landmarks,
       currentSide: _currentSide,
+      chain: config.chain,
       imageWidth: frame.imageWidth,
       imageHeight: frame.imageHeight,
     );
@@ -147,20 +152,21 @@ class SquatPipeline {
           : null;
       final lost = _lostStreak >= _lostAfterFrames;
       final feedback = lost
-          ? const FeedbackSnapshot(
+          ? FeedbackSnapshot(
               level: FeedbackLevel.red,
-              cue: 'Tracking lost',
+              cue: config.cues.trackingLost,
             )
           : _debouncer.update(
               _calibrating
-                  ? const FeedbackSnapshot(
+                  ? FeedbackSnapshot(
                       level: FeedbackLevel.green,
-                      cue: 'Hold still — calibrating',
+                      cue: config.cues.calibrating,
                     )
                   : evaluateFeedback(
                       phase: result?.phase ?? RepPhase.rest,
                       trackingLost: false,
                       machineResult: result,
+                      cues: config.cues,
                     ),
             );
       return PipelineFrame(
@@ -188,21 +194,24 @@ class SquatPipeline {
     // skimming the visibility floor) must not wipe the evidence of
     // sustained loss — the "Tracking lost" cue would fire inconsistently.
     if (_lostStreak > 0) _lostStreak -= 1;
-    final raw = kneeAngle(selected.hip, selected.knee, selected.ankle);
+    final raw = jointAngle(selected.proximal, selected.vertex, selected.distal);
     final smoothed = _ema.update(raw);
 
     if (_calibrating) {
       // Pixel scale refs for Evidence calibration — torso length from
       // shoulder to ipsilateral hip, shoulder width from left to right
-      // shoulder. Null when landmarks are missing or the source has no
+      // shoulder. Body-scale references, independent of the movement's
+      // chain. Null when landmarks are missing or the source has no
       // image dimensions (synthetic fixtures).
-      final shoulder = frame.landmarks['${selected.side}Shoulder'];
-      final oppositeSide = selected.side == 'left' ? 'right' : 'left';
+      final side = selected.side;
+      final shoulder = frame.landmarks['${side}Shoulder'];
+      final hip = frame.landmarks['${side}Hip'];
+      final oppositeSide = side == 'left' ? 'right' : 'left';
       final oppositeShoulder = frame.landmarks['${oppositeSide}Shoulder'];
-      final torsoLen = shoulder != null
+      final torsoLen = (shoulder != null && hip != null)
           ? _pointDistancePx(
               shoulder,
-              selected.hip,
+              hip,
               frame.imageWidth,
               frame.imageHeight,
             )
@@ -216,7 +225,7 @@ class SquatPipeline {
             )
           : null;
       _calibration.addSample(
-        kneeAngle: smoothed,
+        signal: smoothed,
         torsoLengthPx: torsoLen,
         shoulderWidthPx: shoulderW,
       );
@@ -226,7 +235,7 @@ class SquatPipeline {
         phase: RepPhase.rest,
         feedback: FeedbackSnapshot(
           level: FeedbackLevel.green,
-          cue: 'Hold still — calibrating',
+          cue: config.cues.calibrating,
           activeSide: selected.side,
         ),
         rawAngle: raw,
@@ -256,6 +265,7 @@ class SquatPipeline {
         trackingLost: false,
         machineResult: result,
         activeSide: selected.side,
+        cues: config.cues,
       ),
     );
     return PipelineFrame(
@@ -340,3 +350,7 @@ class SquatPipeline {
     return math.sqrt(dx * dx + dy * dy);
   }
 }
+
+/// Compatibility alias — the engine was squat-only when it landed and
+/// existing call sites/tests reference the original name.
+typedef SquatPipeline = RepPipeline;

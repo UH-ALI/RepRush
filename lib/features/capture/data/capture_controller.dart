@@ -16,14 +16,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:reprush/features/capture/camera/coordinates.dart';
 import 'package:reprush/features/capture/camera/input_image_adapter.dart';
+import 'package:reprush/features/capture/camera/movement_landmarks.dart';
 import 'package:reprush/features/capture/camera/pose_service.dart';
-import 'package:reprush/features/capture/camera/squat_landmarks.dart';
 import 'package:reprush/features/capture/pipeline/evidence.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/pipeline_trace_recorder.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
-import 'package:reprush/features/capture/pipeline/squat_pipeline.dart';
+import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/trace_recorder.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 import 'package:reprush/models/models.dart';
@@ -52,8 +52,8 @@ class CaptureStatus {
   /// Completed inferences per second, over a rolling one-second window.
   final int fps;
 
-  /// True when the squat landmarks have not been reliably observed for a
-  /// sustained stretch (B6 red state — preview availability only).
+  /// True when the required landmarks have not been reliably observed for
+  /// a sustained stretch (B6 red state — preview availability only).
   final bool trackingLost;
 
   /// Human-readable reason for a problem phase (N9: always shown with an
@@ -108,7 +108,7 @@ class CaptureController extends Notifier<CaptureStatus> {
 
   CameraController? _camera;
   PoseService? _pose;
-  SquatPipeline? _pipeline;
+  RepPipeline? _pipeline;
   TraceRecorder? _traceRecorder;
 
   /// Debug-only pipeline diagnostics (angles, phase, thresholds, side,
@@ -166,7 +166,7 @@ class CaptureController extends Notifier<CaptureStatus> {
   /// a valid offset rather than an epoch.
   void startSession(MovementConfig config) {
     _pipeline?.reset();
-    _pipeline = SquatPipeline(config);
+    _pipeline = RepPipeline(config);
     _sessionClock = Stopwatch()..start();
     _repEvents.clear();
     _framesTotal = 0;
@@ -174,7 +174,9 @@ class CaptureController extends Notifier<CaptureStatus> {
     _calibDiagLogged = false;
     // Debug-only fixture capture — release builds never allocate it.
     _traceRecorder = kDebugMode ? TraceRecorder() : null;
-    _diagRecorder = kDebugMode ? PipelineTraceRecorder() : null;
+    _diagRecorder = kDebugMode
+        ? PipelineTraceRecorder(chain: config.chain)
+        : null;
     pipelineFrames.value = null;
   }
 
@@ -412,7 +414,9 @@ class CaptureController extends Notifier<CaptureStatus> {
           ];
 
     PoseFrame? drawable;
-    if (degrees != null && pose != null && squatLandmarksObserved(observed)) {
+    if (degrees != null &&
+        pose != null &&
+        chainLandmarksObserved(JointChain.leg, observed)) {
       drawable = PoseFrame(
         points: {
           for (final landmark in pose.landmarks.values)
@@ -431,7 +435,7 @@ class CaptureController extends Notifier<CaptureStatus> {
   /// and the pipeline's side selection decides what is drawable. A null
   /// selection clears the skeleton immediately — never a stale pose (§10c).
   void _onPosesWithPipeline(
-    SquatPipeline pipeline,
+    RepPipeline pipeline,
     Pose? pose,
     CameraImage image,
     int? degrees,
@@ -538,24 +542,24 @@ class CaptureController extends Notifier<CaptureStatus> {
         },
         feedback: result.feedback,
         repCount: result.repCount,
-        activeSideLandmarks: _activeSideLandmarks(result.selectedSide!),
+        activeSideLandmarks: _activeSideLandmarks(
+          result.selectedSide!,
+          pipeline.config.chain,
+        ),
       );
     }
     applyPose(drawable: drawable);
   }
 
-  /// The counted side's hip-knee-ankle chain, for overlay colouring.
-  Set<PoseLandmarkType> _activeSideLandmarks(String side) => side == 'left'
-      ? const {
-          PoseLandmarkType.leftHip,
-          PoseLandmarkType.leftKnee,
-          PoseLandmarkType.leftAnkle,
-        }
-      : const {
-          PoseLandmarkType.rightHip,
-          PoseLandmarkType.rightKnee,
-          PoseLandmarkType.rightAnkle,
-        };
+  /// The chain landmarks of the counted side, for overlay colouring.
+  Set<PoseLandmarkType> _activeSideLandmarks(
+    String side,
+    JointChain chain,
+  ) => {
+        poseLandmarkByName['$side${chain.proximal}']!,
+        poseLandmarkByName['$side${chain.vertex}']!,
+        poseLandmarkByName['$side${chain.distal}']!,
+      };
 
   /// Applies one inference result to the drawable-frame state.
   ///
@@ -658,7 +662,7 @@ class CaptureController extends Notifier<CaptureStatus> {
         accuracyM: location.accuracyM,
         isMocked: location.isMocked,
       ),
-      movementId: 'squat',
+      movementId: pipeline.config.id,
       measurementType: 'repBodyweight',
       startedAtMs: 0,
       endedAtMs: setEndMs,
