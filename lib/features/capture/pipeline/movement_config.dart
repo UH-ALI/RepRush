@@ -93,6 +93,9 @@ class MovementConfig {
     required this.decreasing,
     this.chain = JointChain.leg,
     this.cues = FeedbackCues.standard,
+    this.maxRestSpread,
+    this.minRestAngle,
+    this.maxRestAngle,
   });
 
   final String id;
@@ -118,6 +121,18 @@ class MovementConfig {
 
   /// True when the signal drops at peak (squat); false would mean it rises.
   final bool decreasing;
+
+  /// Optional per-movement override for calibration spread tolerance (degrees).
+  /// When null, defaults to [CalibrationGuards.maxRestSpread].
+  final double? maxRestSpread;
+
+  /// Optional per-movement override for minimum plausible rest angle (degrees).
+  /// When null, defaults to [CalibrationGuards.minRestAngle].
+  final double? minRestAngle;
+
+  /// Optional per-movement override for maximum plausible rest angle (degrees).
+  /// When null, defaults to [CalibrationGuards.maxRestAngle].
+  final double? maxRestAngle;
 }
 
 const squatConfig = MovementConfig(
@@ -169,3 +184,54 @@ const pushUpConfig = MovementConfig(
         'Lie flat, camera to the side — keep full body in frame',
   ),
 );
+
+// ---------------------------------------------------------------------------
+// Pull-up config — elbow chain (shoulder → elbow → wrist), bilateral.
+// Camera placement: athlete hanging from bar, camera to the side far enough
+// back that shoulder, elbow, and wrist stay visible at both dead-hang and top.
+//
+// Threshold rationale (UNTUNED — placeholder values marked UNTUNED, same as
+// push-up's first pass; replace after measuring a real recorded set):
+//   Rest ≈ 170° (arms nearly straight in dead-hang).
+//   startDescentOffset  −8 → fires at ≈162° (arms start to pull/bend)
+//   enterPeakOffset    −70 → fires at ≈100° (elbow flexed toward top; copied from
+//                              push-up's placeholder, needs independent tuning)
+//   enterRestOffset    −20 → rep counted on return to dead-hang past ≈150°
+//   romTargetOffset    −90 → full-ROM grade target ≈ 80° (chin clearly over bar)
+//   maxRestSpread      12.0 → looser than squat/push-up (8.0°) to tolerate
+//                              natural dead-hang swing
+// ---------------------------------------------------------------------------
+const pullUpConfig = MovementConfig(
+  id: 'pull_up',
+  chain: JointChain.arm,
+  // UNTUNED — placeholder values marked UNTUNED, same as push-up's first pass;
+  // replace with values from a recorded set once real landmark data is available.
+  startDescentOffset: -8.0,
+  // UNTUNED — copied from push-up's placeholder, needs independent tuning.
+  enterPeakOffset: -70.0,
+  enterRestOffset: -20.0,
+  romTargetOffset: -90.0,
+  decreasing: true,
+  // UNTUNED — dead-hang naturally swings more than a held plank or standing rest;
+  // looser than squat/push-up's default (8.0°). Placeholder pending real data.
+  maxRestSpread: 12.0,
+  cues: FeedbackCues(
+    calibrating: 'Hang still in dead-hang — calibrating',
+    ready: 'Ready to pull',
+    descending: 'Pull higher',
+    depthReached: 'Chin over bar',
+    ascending: 'Lower to dead-hang',
+    repCounted: 'Pull-up counted',
+    shallowReturn: 'Not counted — pull chin over bar next rep',
+    trackingLost: 'Tracking lost — stay in frame',
+    retryTooFewSamples:
+        'Not enough steady frames yet — hang still in dead-hang',
+    retryUnstableRest: 'Too much swing — hang still while we retry',
+    retryImplausibleRest:
+        'Hang with arms straight, film from side, keep arms in frame — retrying',
+    placementGuidance:
+        'Film from the side, far enough back that shoulder, elbow, and wrist '
+        'stay visible at both dead-hang and the top of the rep',
+  ),
+);
+

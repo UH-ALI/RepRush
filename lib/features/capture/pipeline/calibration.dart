@@ -164,15 +164,17 @@ class CalibrationCapture {
     final sorted = List<double>.of(_samples)..sort();
     final median = _medianOf(sorted);
     final spread = _spreadOf(sorted);
-    if (median < CalibrationGuards.minRestAngle ||
-        median > CalibrationGuards.maxRestAngle) {
+    final minAngle = config.minRestAngle ?? CalibrationGuards.minRestAngle;
+    final maxAngle = config.maxRestAngle ?? CalibrationGuards.maxRestAngle;
+    if (median < minAngle || median > maxAngle) {
       return CalibrationRejected(
         reason: CalibrationRejectionReason.implausibleRest,
         median: median,
         spread: spread,
       );
     }
-    if (spread > CalibrationGuards.maxRestSpread) {
+    final maxSpread = config.maxRestSpread ?? CalibrationGuards.maxRestSpread;
+    if (spread > maxSpread) {
       return CalibrationRejected(
         reason: CalibrationRejectionReason.unstableRest,
         median: median,

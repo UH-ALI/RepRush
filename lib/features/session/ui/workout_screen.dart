@@ -27,6 +27,7 @@ import 'package:reprush/shared/states/states.dart';
 const Map<String, MovementConfig> _captureReadyConfigs = {
   'squat': squatConfig,
   'push_up': pushUpConfig,
+  'pull_up': pullUpConfig,
 };
 
 
@@ -96,7 +97,7 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
                 padding: const EdgeInsets.all(RepRushTokens.spaceMd),
                 child: Text(
                   '${_selectedMovementId.replaceAll("_", " ")} is not yet '
-                  'capture-ready — select Squat or Push-up to open the camera.',
+                  'capture-ready — select Squat, Push-up, or Pull-up to open the camera.',
                 ),
               ),
             )
