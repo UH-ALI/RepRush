@@ -111,30 +111,32 @@ class StubTerritoryRepository implements TerritoryRepository {
     required double neLat,
     required double neLng,
   }) async {
-    // ~40 seeded hexes around the venue, mixed ownership. Placeholder
-    // rectangular cells on a jittered grid — real H3 boundary polygons come
-    // from the server (B-10).
-    //
-    // The ids are placeholders too, and only the `yours` cell is real: bumping
-    // the trailing digits of an index does not walk to a neighbouring cell. They
-    // are still res-8-SHAPED on purpose — a res-10-looking id would render fine
-    // here and then 404 against a live `/territory/hex/:h3`, which is a bug that
-    // only appears on the Day-3 swap. `yours` carries [DemoVenue.demoHexH3] so
-    // the cell the map highlights is one `hexDetail` can actually answer for.
-    const rows = 8;
-    const cols = 5;
-    final dLat = math.max(0.001, (neLat - swLat) / rows);
-    final dLng = math.max(0.001, (neLng - swLng) / cols);
+    // H3 boundaries are computed by the live Edge Function. The Flutter stub
+    // cannot import the server-only H3 package, so it uses a tessellating
+    // pointy-hex fixture with the same wire shape and ownership semantics.
+    const rows = 10;
+    const cols = 9;
+    final cellWidth = math.max(0.001, (neLng - swLng) / cols);
+    final radiusLng = cellWidth / math.sqrt(3);
+    final radiusLat = (neLat - swLat) / (rows * 1.5);
     final cells = <HexCell>[];
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
         final i = r * cols + c;
-        final jitter = ((i * 37) % 10) / 4000.0;
-        final sw = GeoPoint(
-          lat: swLat + r * dLat + jitter,
-          lng: swLng + c * dLng + jitter,
-        );
-        final ne = GeoPoint(lat: sw.lat + dLat * 0.9, lng: sw.lng + dLng * 0.9);
+        final centerLat =
+            swLat +
+            radiusLat +
+            r * radiusLat * 1.5 +
+            (c.isOdd ? radiusLat * .75 : 0);
+        final centerLng = swLng + radiusLng + c * cellWidth;
+        final polygon = <GeoPoint>[
+          GeoPoint(lat: centerLat + radiusLat, lng: centerLng),
+          GeoPoint(lat: centerLat + radiusLat / 2, lng: centerLng + radiusLng),
+          GeoPoint(lat: centerLat - radiusLat / 2, lng: centerLng + radiusLng),
+          GeoPoint(lat: centerLat - radiusLat, lng: centerLng),
+          GeoPoint(lat: centerLat - radiusLat / 2, lng: centerLng - radiusLng),
+          GeoPoint(lat: centerLat + radiusLat / 2, lng: centerLng - radiusLng),
+        ];
         final yours = i == 12;
         final owner = yours
             ? _ownerYou
@@ -144,12 +146,7 @@ class StubTerritoryRepository implements TerritoryRepository {
             h3: yours
                 ? DemoVenue.demoHexH3
                 : '88195da49bf${(i + 1).toRadixString(16).padLeft(4, '0')}',
-            polygon: [
-              GeoPoint(lat: sw.lat, lng: sw.lng),
-              GeoPoint(lat: ne.lat, lng: sw.lng),
-              GeoPoint(lat: ne.lat, lng: ne.lng),
-              GeoPoint(lat: sw.lat, lng: ne.lng),
-            ],
+            polygon: polygon,
             ownerHandle: owner,
             ownerColor: yours
                 ? 'mine'

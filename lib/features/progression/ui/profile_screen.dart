@@ -10,6 +10,7 @@ import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/diary/diary.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/shared/states/states.dart';
+import 'package:reprush/shared/widgets/widgets.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -29,34 +30,36 @@ class ProfileScreen extends ConsumerWidget {
               error: error,
               onRetry: () => ref.invalidate(profileProvider),
             ),
-            data: (me) => Card(
-              child: Padding(
-                padding: const EdgeInsets.all(RepRushTokens.spaceMd),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      me.handle,
-                      style: Theme.of(context).textTheme.headlineSmall,
+            data: (me) => GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: RepRushTokens.brand.withValues(alpha: .18),
+                      child: const Icon(Icons.person, color: RepRushTokens.brand),
                     ),
-                    const SizedBox(height: RepRushTokens.spaceSm),
-                    Text('Level ${me.level} · ${me.xp} XP'),
-                    Text(
-                      'Lifetime RepScore: '
-                      '${me.lifetimeRepScore.toStringAsFixed(0)}',
-                    ),
-                    Text('Home spot: ${me.homeSpotId ?? '—'}'),
-                    Text('Unlocked tiers: ${me.unlockedTiers.join(', ')}'),
-                  ],
-                ),
+                    const SizedBox(width: RepRushTokens.spaceSm),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(me.handle, style: RepRushTokens.sectionTitle),
+                      Text('Level ${me.level} · ${me.xp} XP', style: RepRushTokens.bodyLabel),
+                    ])),
+                    Text(me.lifetimeRepScore.toStringAsFixed(0), style: RepRushTokens.statNumber),
+                  ]),
+                  const SizedBox(height: RepRushTokens.spaceMd),
+                  XpBar(xp: me.xp, level: me.level),
+                  const SizedBox(height: RepRushTokens.spaceMd),
+                  Row(children: [
+                    Expanded(child: Text('Home spot: ${me.homeSpotId ?? '—'}', style: RepRushTokens.bodyLabel)),
+                    Text('${me.unlockedTiers.length} tiers unlocked', style: RepRushTokens.bodyLabel),
+                  ]),
+                ],
               ),
             ),
           ),
           const SizedBox(height: RepRushTokens.spaceLg),
-          Text(
-            'Variation tree',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Movement library', style: RepRushTokens.sectionTitle),
           const SizedBox(height: RepRushTokens.spaceSm),
           movements.when(
             loading: () => const LoadingView(),
@@ -64,28 +67,17 @@ class ProfileScreen extends ConsumerWidget {
               error: error,
               onRetry: () => ref.invalidate(movementsProvider),
             ),
-            data: (list) => Card(
-              child: Column(
-                children: [
+            data: (list) => GlassCard(
+              child: Column(children: [
                   for (final movement in list)
                     ListTile(
-                      leading: Icon(
-                        movement.unlocked
-                            ? Icons.lock_open
-                            : Icons.lock_outline,
-                      ),
-                      title: Text(movement.id.replaceAll('_', ' ')),
-                      subtitle: Text(
-                        '${movement.family.wireName} family · T${movement.tier}'
-                        ' · ×${movement.difficulty.toStringAsFixed(1)}'
-                        ' · ${movement.measurementType.wireName}',
-                      ),
-                      trailing: movement.repsTowardNextTier > 0
-                          ? Text('${movement.repsTowardNextTier}/50')
-                          : null,
+                      contentPadding: EdgeInsets.zero,
+                      leading: TierBadge(tier: movement.tier, locked: !movement.unlocked),
+                      title: Text(movement.id.replaceAll('_', ' '), style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('×${movement.difficulty.toStringAsFixed(1)} · ${movement.family.wireName}'),
+                      trailing: movement.unlocked ? const Icon(Icons.check_circle, color: RepRushTokens.brand) : const Icon(Icons.lock_outline),
                     ),
-                ],
-              ),
+                ]),
             ),
           ),
           const SizedBox(height: RepRushTokens.spaceLg),

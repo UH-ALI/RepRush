@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/api_providers.dart';
+import 'package:reprush/core/location/location.dart';
 import 'package:reprush/models/models.dart';
 
 /// The active one-shot session (I2), or `null` when no session is open.
@@ -30,14 +31,15 @@ class ActiveSessionController extends Notifier<SessionStart?> {
   /// Read-only accessor for the retained start location.
   SessionLocation? get startLocation => _startLocation;
 
-  /// `POST /session/start` — opens a session against the demo venue until
-  /// real location lands (C1).
-  Future<SessionStart> start({String? spotId}) async {
-    const venue = SessionLocation(lat: 51.5074, lng: -0.1278, accuracyM: 12);
+  /// `POST /session/start` — opens a session using the device location (C1).
+  Future<SessionStart> start({
+    required SessionLocation location,
+    String? spotId,
+  }) async {
     final started = await ref
         .read(sessionRepositoryProvider)
-        .start(location: venue, spotId: spotId);
-    _startLocation = venue;
+        .start(location: location, spotId: spotId);
+    _startLocation = location;
     state = started;
     return started;
   }
@@ -58,3 +60,7 @@ final activeSessionProvider =
     NotifierProvider<ActiveSessionController, SessionStart?>(
       ActiveSessionController.new,
     );
+
+Future<SessionLocation> readSessionLocation() async {
+  return readDeviceLocation();
+}

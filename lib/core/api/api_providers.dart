@@ -1,7 +1,7 @@
 /// Repository bindings — §state rule 2. Every endpoint lives behind a typed
 /// repository, and this is the ONLY place a binding chooses between a stub and
-/// the live client. The choice is a build flag (`--dart-define=REPRUSH_API=live`),
-/// not an edit, so no widget changes either way.
+/// the live client. Stub mode remains available explicitly with
+/// `--dart-define=REPRUSH_API=stub`.
 ///
 /// Ownership: B.
 library;

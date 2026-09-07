@@ -640,14 +640,21 @@ class _Banner extends StatelessWidget {
         vertical: RepRushTokens.spaceSm,
       ),
       decoration: BoxDecoration(
-        color: color,
+        color: color.withValues(alpha: .82),
         borderRadius: BorderRadius.circular(RepRushTokens.cornerChip),
+        border: Border.all(color: Colors.white.withValues(alpha: .24)),
+        boxShadow: [BoxShadow(color: color.withValues(alpha: .35), blurRadius: 14)],
       ),
       child: Row(
         children: [
-          Icon(icon),
+          Icon(icon, color: Colors.white),
           const SizedBox(width: RepRushTokens.spaceSm),
-          Expanded(child: Text(text)),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
         ],
       ),
     );
