@@ -1,0 +1,4 @@
+# Local override — the upstream monorepo include is not available.
+analyzer:
+  exclude:
+    - example/**

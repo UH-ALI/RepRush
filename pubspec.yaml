@@ -70,6 +70,14 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+# Local override for google_mlkit_pose_detection — fixes Android
+# PoseDetector.kt to send 2D pixel coordinates (position.x/y) instead
+# of 3D world coordinates (position3D.x/y).  Remove when upstream
+# releases a fixed version.
+dependency_overrides:
+  google_mlkit_pose_detection:
+    path: packages/google_mlkit_pose_detection
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

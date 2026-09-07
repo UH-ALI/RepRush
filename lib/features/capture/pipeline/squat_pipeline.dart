@@ -327,12 +327,16 @@ class SquatPipeline {
     return p > 1 ? 1 : p;
   }
 
-  /// Pixel-space distance between two landmarks — null when the source
-  /// frame has no dimensions (synthetic fixtures).
+  /// Pixel-space distance between two landmarks.  After the
+  /// google_mlkit_pose_detection local override the x/y values are
+  /// already in image-pixel coordinates, so plain Euclidean distance
+  /// is the correct result.  Returns null when the source frame has
+  /// no dimensions (synthetic fixtures) so the caller can distinguish
+  /// "no measurement" from "zero distance".
   static double? _pointDistancePx(Lm a, Lm b, double? w, double? h) {
     if (w == null || h == null) return null;
-    final dx = (a.x - b.x) * w;
-    final dy = (a.y - b.y) * h;
+    final dx = a.x - b.x;
+    final dy = a.y - b.y;
     return math.sqrt(dx * dx + dy * dy);
   }
 }

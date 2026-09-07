@@ -1,0 +1,52 @@
+group = "com.google_mlkit_pose_detection"
+version = "1.0"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.13.0")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+    }
+}
+
+android {
+    namespace = "com.google_mlkit_pose_detection"
+
+    compileSdk = 36
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+
+    dependencies {
+        implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
+        implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
+    }
+}
