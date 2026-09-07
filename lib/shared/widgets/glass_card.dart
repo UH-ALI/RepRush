@@ -17,13 +17,18 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = Container(
+    final card = AnimatedContainer(
+      duration: RepRushTokens.medium,
       padding: padding,
       decoration: BoxDecoration(
         gradient: RepRushTokens.cardGradient,
         color: RepRushTokens.surfaceMid,
         borderRadius: BorderRadius.circular(RepRushTokens.cornerCard),
-        border: Border.all(color: RepRushTokens.brand.withValues(alpha: .18)),
+        border: Border.all(
+          color: glow
+              ? RepRushTokens.brand.withValues(alpha: .65)
+              : RepRushTokens.brand.withValues(alpha: .14),
+        ),
         boxShadow: glow ? RepRushTokens.brandGlow : RepRushTokens.cardShadow,
       ),
       child: child,

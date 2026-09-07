@@ -97,13 +97,10 @@ function parseBbox(raw: string | null): [number, number, number, number] {
 }
 
 /**
- * GET territory/hexes — the claimed cells covering the bbox.
+ * GET territory/hexes — the complete H3 cells covering the bbox.
  *
- * Resolves each cell live from the ledger (D3), keeps only cells with a holder at
- * or above the claim threshold, and OMITS the unclaimed ones: the client draws the
- * basemap beneath, so an unclaimed hex is simply "no polygon over it" rather than a
- * shape we ship with `ownerHandle: null` (the assumption recorded in the plan; the
- * `'unclaimed'` colour token exists for the stub grid, not the live wire).
+ * Resolves each cell live from the ledger (D3), retaining unclaimed cells
+ * alongside claimed cells so the client can render a continuous lattice.
  */
 async function handleHexes(user: Authed, bboxRaw: string | null): Promise<HexCellOut[]> {
   const [swLat, swLng, neLat, neLng] = parseBbox(bboxRaw);
@@ -126,23 +123,30 @@ async function handleHexes(user: Authed, bboxRaw: string | null): Promise<HexCel
 
   // Resolve every cell, keep the winners, and collect the distinct owner ids so a
   // bbox of many cells costs ONE profiles round trip for handles.
-  const claimed: { h3: string; ownerId: string; power: number }[] = [];
+  const resolved: { h3: string; ownerId: string | null; power: number }[] = [];
   for (const h3 of cells) {
     const powers = resolveHexPower(contributions.get(h3) ?? [], nowMs);
     const owner = resolveOwner(powers, threshold);
-    if (owner === null) continue; // Unclaimed (or decayed below threshold): omitted.
-    claimed.push({ h3, ownerId: owner.userId, power: owner.power });
+    resolved.push({
+      h3,
+      ownerId: owner?.userId ?? null,
+      power: owner?.power ?? 0,
+    });
   }
 
-  const handles = await loadHandles(client, [...new Set(claimed.map((c) => c.ownerId))]);
+  const handles = await loadHandles(
+    client,
+    [...new Set(resolved.flatMap((c) => c.ownerId === null ? [] : [c.ownerId]))],
+  );
 
-  return claimed.map((c) => {
-    const yours = c.ownerId === user.userId;
+  return resolved.map((c) => {
+    const yours = c.ownerId === user.userId && c.ownerId !== null;
+    const claimed = c.ownerId !== null;
     return {
       h3: c.h3,
       polygon: hexBoundary(c.h3).map(([lat, lng]) => ({ lat, lng })),
-      ownerHandle: handles.get(c.ownerId) ?? null,
-      ownerColor: ownerColor(yours, true),
+      ownerHandle: c.ownerId === null ? null : handles.get(c.ownerId) ?? null,
+      ownerColor: ownerColor(yours, claimed),
       power: c.power,
       yours,
     };

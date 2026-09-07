@@ -7,7 +7,8 @@ class FeedbackBanner extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => AnimatedContainer(
+    duration: RepRushTokens.fast,
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(color: state.background, borderRadius: BorderRadius.circular(99), border: Border.all(color: state.foreground.withValues(alpha: .5))),
     child: Row(mainAxisSize: MainAxisSize.min, children: [

@@ -31,9 +31,17 @@ class EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inbox_outlined, size: 48, color: RepRushTokens.brand.withValues(alpha: .7)),
+            Icon(
+              Icons.inbox_outlined,
+              size: 48,
+              color: RepRushTokens.brand.withValues(alpha: .7),
+            ),
             const SizedBox(height: RepRushTokens.spaceSm),
-            Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
           ],
         ),
       ),
@@ -52,6 +60,11 @@ class ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final api = error is ApiException ? error as ApiException : null;
+    final message =
+        api?.message ??
+        (error is StateError
+            ? error.toString().replaceFirst('Bad state: ', '')
+            : error.toString());
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceLg),
@@ -60,10 +73,7 @@ class ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline),
             const SizedBox(height: RepRushTokens.spaceSm),
-            Text(
-              api?.message ?? 'Something went wrong.',
-              textAlign: TextAlign.center,
-            ),
+            Text(message, textAlign: TextAlign.center),
             if (api != null) ...[
               const SizedBox(height: RepRushTokens.spaceXs),
               Text(

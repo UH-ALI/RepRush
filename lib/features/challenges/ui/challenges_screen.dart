@@ -43,8 +43,20 @@ class _DailyChallengeCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progress = challenge.progress / challenge.target;
-    return GlassCard(
-      child: Padding(
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: RepRushTokens.slow,
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, 18 * (1 - value)),
+          child: child,
+        ),
+      ),
+      child: GlassCard(
+        glow: true,
+        child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -57,17 +69,25 @@ class _DailyChallengeCard extends ConsumerWidget {
             const SizedBox(height: RepRushTokens.spaceXs),
             Text(challenge.description),
             const SizedBox(height: RepRushTokens.spaceMd),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-                minHeight: 10,
-                color: RepRushTokens.brand,
-                backgroundColor: Colors.white12,
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress.clamp(0.0, 1.0)),
+              duration: RepRushTokens.slow,
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: value,
+                  minHeight: 10,
+                  color: RepRushTokens.brand,
+                  backgroundColor: Colors.white12,
+                ),
               ),
             ),
             const SizedBox(height: RepRushTokens.spaceXs),
-            Text('${challenge.progress}/${challenge.target} verified reps'),
+            Text(
+              '${challenge.progress}/${challenge.target} verified reps',
+              style: RepRushTokens.bodyLabel,
+            ),
             const SizedBox(height: RepRushTokens.spaceMd),
             BrandButton(
               onPressed: challenge.claimed ? null : () => _claim(context, ref),
@@ -75,6 +95,7 @@ class _DailyChallengeCard extends ConsumerWidget {
               icon: challenge.claimed ? Icons.check : Icons.redeem,
             ),
           ],
+        ),
         ),
       ),
     );

@@ -15,12 +15,17 @@ class XpBar extends StatelessWidget {
         Text('$xp XP', style: RepRushTokens.bodyLabel),
       ]),
       const SizedBox(height: 8),
-      ClipRRect(
+      TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: progress),
+        duration: RepRushTokens.slow,
+        curve: Curves.easeOutCubic,
+        builder: (context, value, _) => ClipRRect(
         borderRadius: BorderRadius.circular(99),
         child: SizedBox(height: 10, child: Stack(children: [
           const ColoredBox(color: Colors.white12),
-          FractionallySizedBox(widthFactor: progress, child: const DecoratedBox(decoration: BoxDecoration(gradient: RepRushTokens.brandGradient))),
+          FractionallySizedBox(widthFactor: value, child: const DecoratedBox(decoration: BoxDecoration(gradient: RepRushTokens.brandGradient))),
         ])),
+        ),
       ),
     ]);
   }

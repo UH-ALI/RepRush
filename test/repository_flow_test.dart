@@ -89,11 +89,11 @@ void main() {
         addTearDown(container.dispose);
 
         final cells = await container.read(hexesProvider.future);
-        expect(cells.length, greaterThanOrEqualTo(40));
+        expect(cells.length, greaterThanOrEqualTo(90));
         expect(cells.where((c) => c.yours), isNotEmpty);
         expect(cells.where((c) => c.ownerHandle == null), isNotEmpty);
         for (final cell in cells) {
-          expect(cell.polygon, hasLength(4));
+          expect(cell.polygon, hasLength(6));
           expect(cell.polygon.first.lat, isNonNegative);
         }
       },

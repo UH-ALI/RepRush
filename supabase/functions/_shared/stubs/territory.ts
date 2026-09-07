@@ -8,14 +8,9 @@
 /// geometry. That is fine because its only importer is `territory/index.ts`, which
 /// is Deno-only already, and no Node test asserts these bytes.
 ///
-/// WHERE THIS DIFFERS FROM THE DART STUB, AND WHY THAT IS CORRECT
-/// `StubTerritoryRepository` in `stub_repositories.dart` draws RECTANGULAR cells on
-/// a jittered grid with ids fabricated by bumping hex digits — documented debt in
-/// `_shared/stubs/venue.ts`, because the client has no H3 library (§8 open-1) and
-/// that stub predates server-side resolution. Here we HAVE h3-js, so the fallback
-/// emits the real cells and real boundaries the live route would, differing only in
-/// that ownership is invented rather than read. Same wire shape either way, which is
-/// the point of the gate.
+/// The fallback emits the same real H3 cells and boundaries as the live route,
+/// differing only in that ownership is deterministic demo data rather than read
+/// from the ledger.
 
 import { cellsCoveringBBox, hexBoundary } from "../h3.ts";
 import { VENUE } from "./venue.ts";

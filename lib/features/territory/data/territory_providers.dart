@@ -28,6 +28,18 @@ final hexesProvider = FutureProvider<List<HexCell>>((ref) {
       );
 });
 
+/// `GET /spots/nearby` around the demo/player location.
+final nearbySpotsProvider = FutureProvider<List<SpotSummary>>((ref) {
+  if (ref.watch(backendConfigProvider).isLive) {
+    // The current Supabase schema has no spots route/table. Do not show
+    // fabricated demo spots alongside live territory.
+    return Future.value(const <SpotSummary>[]);
+  }
+  return ref
+      .watch(spotsRepositoryProvider)
+      .nearby(lat: DemoVenue.lat, lng: DemoVenue.lng);
+});
+
 /// `GET /territory/hex/:h3` — owner, power, your power, spots, recent flips.
 final hexDetailProvider = FutureProvider.family<HexDetail, String>((ref, h3) {
   return ref.watch(territoryRepositoryProvider).hexDetail(h3);

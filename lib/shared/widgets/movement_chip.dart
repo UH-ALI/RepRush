@@ -17,13 +17,14 @@ class MovementChip extends StatelessWidget {
       child: GestureDetector(
         onTap: movement.unlocked ? onTap : null,
         child: AnimatedContainer(
-          duration: RepRushTokens.fast,
+          duration: RepRushTokens.medium,
+          curve: Curves.easeOutCubic,
           width: 142,
           padding: const EdgeInsets.all(RepRushTokens.spaceSm),
           decoration: BoxDecoration(
             gradient: selected ? RepRushTokens.brandGradient : RepRushTokens.surfaceGradient,
             borderRadius: BorderRadius.circular(RepRushTokens.cornerCard),
-            border: Border.all(color: selected ? RepRushTokens.brand : Colors.white12),
+            border: Border.all(color: selected ? RepRushTokens.brand : Colors.white12, width: selected ? 1.5 : 1),
             boxShadow: selected ? RepRushTokens.brandGlow : null,
           ),
           child: Column(

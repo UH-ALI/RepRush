@@ -9,8 +9,9 @@
 /// state of. On demo day that is the difference between knowing which backend you
 /// are talking to and finding out on stage.
 ///
-/// The default is [ApiMode.stub], so a plain `flutter run` is byte-for-byte the
-/// app C has been building against. Going live is opt-in and needs two flags:
+/// The default is [ApiMode.live]. The app therefore reads territory from the
+/// Supabase Edge Functions unless a developer explicitly opts into stub mode.
+/// Going live needs the Supabase publishable/anon key:
 ///
 ///     flutter run --dart-define=REPRUSH_API=live \
 ///                 --dart-define=REPRUSH_SUPABASE_ANON_KEY=<key>
@@ -145,13 +146,13 @@ class BackendConfig {
     );
   }
 
-  /// Reads the dart-defines. Stub mode needs none of them, so a plain `flutter run`
-  /// and a plain `flutter test` both work with no flags.
+  /// Reads the dart-defines. Live mode is the default so a normal app build does
+  /// not silently present fabricated territory data.
   factory BackendConfig.fromEnvironment() {
     // `String.fromEnvironment` needs a const NAME, so these five reads can be
     // neither looped nor passed through a helper taking the flag as a parameter.
     return BackendConfig.parse(
-      api: const String.fromEnvironment('REPRUSH_API', defaultValue: 'stub'),
+      api: const String.fromEnvironment('REPRUSH_API', defaultValue: 'live'),
       url: const String.fromEnvironment(
         'REPRUSH_SUPABASE_URL',
         defaultValue: defaultSupabaseUrl,

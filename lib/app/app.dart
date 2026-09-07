@@ -114,8 +114,10 @@ class _NavItem extends StatelessWidget {
         duration: RepRushTokens.fast,
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? RepRushTokens.brand.withValues(alpha: .16) : Colors.transparent,
+          color: selected ? RepRushTokens.brand.withValues(alpha: .14) : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
+          border: selected ? Border.all(color: RepRushTokens.brand.withValues(alpha: .45)) : null,
+          boxShadow: selected ? RepRushTokens.brandGlow : null,
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           AnimatedSwitcher(
@@ -123,7 +125,14 @@ class _NavItem extends StatelessWidget {
             child: selected ? destination.selectedIcon : destination.icon,
           ),
           const SizedBox(height: 3),
-          Text(destination.label, style: TextStyle(fontSize: 11, color: selected ? RepRushTokens.brand : Colors.white60, fontWeight: FontWeight.w700)),
+          Text(
+            destination.label,
+            style: TextStyle(
+              fontSize: 11,
+              color: selected ? RepRushTokens.brand : const Color(0xFFB9C3D8),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ]),
       ),
     ),

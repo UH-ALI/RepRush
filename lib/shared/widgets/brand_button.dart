@@ -9,7 +9,8 @@ class BrandButton extends StatelessWidget {
   final bool loading;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
+  Widget build(BuildContext context) => AnimatedContainer(
+    duration: RepRushTokens.fast,
     decoration: BoxDecoration(
       gradient: onPressed == null ? const LinearGradient(colors: [Colors.white24, Colors.white12]) : RepRushTokens.brandGradient,
       borderRadius: BorderRadius.circular(RepRushTokens.cornerChip),
@@ -21,7 +22,12 @@ class BrandButton extends StatelessWidget {
         onPressed: loading ? null : onPressed,
         icon: loading ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(icon ?? Icons.arrow_forward),
         label: Text(label),
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          shadowColor: Colors.transparent,
+          textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        ),
       ),
     ),
   );
