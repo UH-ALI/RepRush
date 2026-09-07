@@ -8,6 +8,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/core/api/api_providers.dart';
+import 'package:reprush/core/api/backend_config.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart';
 import 'package:reprush/features/challenges/data/challenges_providers.dart';
 import 'package:reprush/features/session/data/session_providers.dart';
@@ -15,6 +16,34 @@ import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
 
 void main() {
+  group('territory location', () {
+    test('viewport is centered on the supplied coordinates', () {
+      final viewport = viewportAround(40.7128, -74.0060);
+
+      expect(viewport.swLat, closeTo(40.6928, 1e-10));
+      expect(viewport.swLng, closeTo(-74.0260, 1e-10));
+      expect(viewport.neLat, closeTo(40.7328, 1e-10));
+      expect(viewport.neLng, closeTo(-73.9860, 1e-10));
+    });
+
+    test('stub mode resolves the demo venue without requesting GPS', () async {
+      final container = ProviderContainer(
+        overrides: [
+          backendConfigProvider.overrideWithValue(
+            BackendConfig.parse(api: 'stub'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final location = await container.read(territoryLocationProvider.future);
+
+      expect(location.lat, DemoVenue.lat);
+      expect(location.lng, DemoVenue.lng);
+      expect(location.accuracyM, 0);
+    });
+  });
+
   group('daily challenge claim flow', () {
     test(
       'claim fails with NOT_COMPLETE before the target, succeeds after',
@@ -109,7 +138,13 @@ void main() {
 
       final started = await container
           .read(activeSessionProvider.notifier)
-          .start();
+          .start(
+            location: const SessionLocation(
+              lat: 51.5074,
+              lng: -0.1278,
+              accuracyM: 12,
+            ),
+          );
       expect(started.movementConfigVersion, DemoVenue.movementConfigVersion);
       expect(started.hexH3, DemoVenue.demoHexH3);
       expect(
@@ -141,7 +176,15 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-      await container.read(activeSessionProvider.notifier).start();
+      await container
+          .read(activeSessionProvider.notifier)
+          .start(
+            location: const SessionLocation(
+              lat: 51.5074,
+              lng: -0.1278,
+              accuracyM: 12,
+            ),
+          );
       final result = await container
           .read(activeSessionProvider.notifier)
           .submit(const {'sessionId': DemoVenue.sessionId});

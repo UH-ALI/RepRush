@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/core/location/location.dart';
 import 'package:reprush/features/capture/ui/capture_placeholder.dart';
 import 'package:reprush/features/capture/ui/capture_preview_screen.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
@@ -63,7 +64,11 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                       child: child,
                     ),
                     child: const Chip(
-                      avatar: Icon(Icons.circle, color: RepRushTokens.brand, size: 10),
+                      avatar: Icon(
+                        Icons.circle,
+                        color: RepRushTokens.brand,
+                        size: 10,
+                      ),
                       label: Text('LIVE'),
                     ),
                   ),
@@ -74,96 +79,125 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
             padding: const EdgeInsets.all(RepRushTokens.spaceMd),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: RepRushTokens.medium,
-            curve: Curves.easeOutCubic,
-            builder: (context, value, child) => Opacity(
-              opacity: value,
-              child: Transform.translate(
-                offset: Offset(0, 18 * (1 - value)),
-                child: child,
-              ),
-            ),
-            child: _SessionCard(session: session),
-          ),
-          const SizedBox(height: RepRushTokens.spaceMd),
-          Text('Choose your movement', style: RepRushTokens.sectionTitle),
-          const SizedBox(height: RepRushTokens.spaceSm),
-          movements.when(
-            loading: () => const LoadingView(),
-            error: (error, _) => ErrorView(
-              error: error,
-              onRetry: () => ref.invalidate(movementsProvider),
-            ),
-            data: (list) => SizedBox(
-              height: 146,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: list.length,
-                separatorBuilder: (_, _) => const SizedBox(width: RepRushTokens.spaceSm),
-                itemBuilder: (context, index) {
-                  final movement = list[index];
-                  return MovementChip(
-                    movement: movement,
-                    selected: movement.id == _selectedMovementId,
-                    onTap: () => setState(() => _selectedMovementId = movement.id),
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: RepRushTokens.spaceMd),
-          if (session != null && _selectedMovementId == 'squat')
-            // A's single entry point, embedded once the one-shot session is
-            // open and Squat is selected.
-            const AspectRatio(aspectRatio: 3 / 4, child: CapturePreviewScreen())
-          else if (session != null)
-            const GlassCard(
-              child: Padding(
-                padding: EdgeInsets.all(RepRushTokens.spaceMd),
-                child: Text(
-                  'Only Squat is capture-ready in Slice 1 — pick Squat to '
-                  'open the camera.',
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: RepRushTokens.medium,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) => Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, 18 * (1 - value)),
+                      child: child,
+                    ),
+                  ),
+                  child: _SessionCard(session: session),
                 ),
-              ),
-            )
-          else
-            const CapturePlaceholder(),
-          const SizedBox(height: RepRushTokens.spaceLg),
-          Text('Train at a spot', style: RepRushTokens.sectionTitle),
-          spots.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.all(RepRushTokens.spaceMd),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (error, _) => ErrorView(
-              error: error,
-              onRetry: () => ref.invalidate(nearbySpotsProvider),
-            ),
-            data: (list) => SizedBox(
-              height: 86,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: list.length,
-                separatorBuilder: (_, _) => const SizedBox(width: RepRushTokens.spaceSm),
-                itemBuilder: (context, index) {
-                  final spot = list[index];
-                  return GlassCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.place, color: RepRushTokens.brand),
-                      const SizedBox(width: 8),
-                      Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Text(spot.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text(spot.verified ? '${spot.distanceM?.round() ?? '?'} m · Verified' : 'Unverified', style: RepRushTokens.bodyLabel),
-                      ]),
-                    ]),
-                  );
-                },
-              ),
-            ),
-          ),
+                const SizedBox(height: RepRushTokens.spaceMd),
+                Text('Choose your movement', style: RepRushTokens.sectionTitle),
+                const SizedBox(height: RepRushTokens.spaceSm),
+                movements.when(
+                  loading: () => const LoadingView(),
+                  error: (error, _) => ErrorView(
+                    error: error,
+                    onRetry: () => ref.invalidate(movementsProvider),
+                  ),
+                  data: (list) => SizedBox(
+                    height: 146,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: list.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(width: RepRushTokens.spaceSm),
+                      itemBuilder: (context, index) {
+                        final movement = list[index];
+                        return MovementChip(
+                          movement: movement,
+                          selected: movement.id == _selectedMovementId,
+                          onTap: () =>
+                              setState(() => _selectedMovementId = movement.id),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: RepRushTokens.spaceMd),
+                if (session != null && _selectedMovementId == 'squat')
+                  // A's single entry point, embedded once the one-shot session is
+                  // open and Squat is selected.
+                  const AspectRatio(
+                    aspectRatio: 3 / 4,
+                    child: CapturePreviewScreen(),
+                  )
+                else if (session != null)
+                  const GlassCard(
+                    child: Padding(
+                      padding: EdgeInsets.all(RepRushTokens.spaceMd),
+                      child: Text(
+                        'Only Squat is capture-ready in Slice 1 — pick Squat to '
+                        'open the camera.',
+                      ),
+                    ),
+                  )
+                else
+                  const CapturePlaceholder(),
+                const SizedBox(height: RepRushTokens.spaceLg),
+                Text('Train at a spot', style: RepRushTokens.sectionTitle),
+                spots.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(RepRushTokens.spaceMd),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, _) => ErrorView(
+                    error: error,
+                    onRetry: () => ref.invalidate(nearbySpotsProvider),
+                  ),
+                  data: (list) => SizedBox(
+                    height: 86,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: list.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(width: RepRushTokens.spaceSm),
+                      itemBuilder: (context, index) {
+                        final spot = list[index];
+                        return GlassCard(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.place,
+                                color: RepRushTokens.brand,
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    spot.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    spot.verified
+                                        ? '${spot.distanceM?.round() ?? '?'} m · Verified'
+                                        : 'Unverified',
+                                    style: RepRushTokens.bodyLabel,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ]),
             ),
           ),
@@ -201,8 +235,26 @@ class _SessionCard extends ConsumerWidget {
                   BrandButton(
                     icon: Icons.play_arrow,
                     label: 'Start session',
-                    onPressed: () =>
-                        ref.read(activeSessionProvider.notifier).start(),
+                    onPressed: () async {
+                      try {
+                        final location = await readSessionLocation();
+                        await ref
+                            .read(activeSessionProvider.notifier)
+                            .start(location: location);
+                      } on LocationException catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(error.message)));
+                      } on ApiException catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${error.code}: ${error.message}'),
+                          ),
+                        );
+                      }
+                    },
                   ),
                 ],
               )

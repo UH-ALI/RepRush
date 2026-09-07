@@ -15,24 +15,49 @@ import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
 class MapScreen extends ConsumerWidget {
-  const MapScreen({super.key});
+  const MapScreen({required this.onOpenWorkout, super.key});
+
+  final Future<void> Function(HexCell cell) onOpenWorkout;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final location = ref.watch(territoryLocationProvider);
     final hexes = ref.watch(hexesProvider);
     final spots = ref.watch(nearbySpotsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Territory')),
-      body: hexes.when(
+      body: location.when(
         loading: () => const LoadingView(),
         error: (error, _) => ErrorView(
           error: error,
-          onRetry: () => ref.invalidate(hexesProvider),
+          onRetry: () => ref.invalidate(territoryLocationProvider),
         ),
-        data: (cells) => spots.when(
-          loading: () => _MapView(cells: cells, spots: const []),
-          error: (error, _) => _MapView(cells: cells, spots: const []),
-          data: (nearby) => _MapView(cells: cells, spots: nearby),
+        data: (resolvedLocation) => hexes.when(
+          loading: () => const LoadingView(),
+          error: (error, _) => ErrorView(
+            error: error,
+            onRetry: () => ref.invalidate(hexesProvider),
+          ),
+          data: (cells) => spots.when(
+            loading: () => _MapView(
+              cells: cells,
+              spots: const [],
+              location: resolvedLocation,
+              onOpenWorkout: onOpenWorkout,
+            ),
+            error: (error, _) => _MapView(
+              cells: cells,
+              spots: const [],
+              location: resolvedLocation,
+              onOpenWorkout: onOpenWorkout,
+            ),
+            data: (nearby) => _MapView(
+              cells: cells,
+              spots: nearby,
+              location: resolvedLocation,
+              onOpenWorkout: onOpenWorkout,
+            ),
+          ),
         ),
       ),
     );
@@ -40,10 +65,17 @@ class MapScreen extends ConsumerWidget {
 }
 
 class _MapView extends ConsumerStatefulWidget {
-  const _MapView({required this.cells, required this.spots});
+  const _MapView({
+    required this.cells,
+    required this.spots,
+    required this.location,
+    required this.onOpenWorkout,
+  });
 
   final List<HexCell> cells;
   final List<SpotSummary> spots;
+  final SessionLocation location;
+  final Future<void> Function(HexCell cell) onOpenWorkout;
 
   @override
   ConsumerState<_MapView> createState() => _MapViewState();
@@ -80,8 +112,9 @@ class _MapViewState extends ConsumerState<_MapView>
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),
-            initialCenter: LatLng(DemoVenue.lat, DemoVenue.lng),
+            initialCenter: LatLng(widget.location.lat, widget.location.lng),
             initialZoom: 14.2,
+            onTap: (_, _) => _onHexTap(),
           ),
           mapController: _mapController,
           children: [
@@ -108,15 +141,12 @@ class _MapViewState extends ConsumerState<_MapView>
                         ),
                     borderColor: cell.h3 == _selectedHex
                         ? Colors.white
-                        : Ownership.fromWire(
-                            ownerHandle: cell.ownerHandle,
-                            yours: cell.yours,
-                          ).color,
+                        : Colors.black.withValues(alpha: .78),
                     borderStrokeWidth: cell.h3 == _selectedHex
                         ? 4
                         : cell.ownerHandle == null && !cell.yours
-                        ? .8
-                        : 1.6,
+                        ? 1.2
+                        : 1.8,
                     hitValue: cell,
                   ),
               ],
@@ -174,7 +204,7 @@ class _MapViewState extends ConsumerState<_MapView>
                     ),
                   ),
                 Marker(
-                  point: const LatLng(DemoVenue.lat, DemoVenue.lng),
+                  point: LatLng(widget.location.lat, widget.location.lng),
                   width: 52,
                   height: 52,
                   child: AnimatedBuilder(
@@ -268,7 +298,7 @@ class _MapViewState extends ConsumerState<_MapView>
               _mapController.camera.zoom - .7,
             ),
             onRecenter: () => _mapController.move(
-              const LatLng(DemoVenue.lat, DemoVenue.lng),
+              LatLng(widget.location.lat, widget.location.lng),
               14.2,
             ),
           ),
@@ -280,10 +310,9 @@ class _MapViewState extends ConsumerState<_MapView>
   @override
   void initState() {
     super.initState();
-    _hitNotifier.addListener(_onHexHit);
   }
 
-  void _onHexHit() {
+  void _onHexTap() {
     final hit = _hitNotifier.value;
     if (hit == null || hit.hitValues.isEmpty || !mounted) return;
     final cell = hit.hitValues.first;
@@ -293,7 +322,8 @@ class _MapViewState extends ConsumerState<_MapView>
       context: context,
       backgroundColor: RepRushTokens.surfaceDark,
       isScrollControlled: true,
-      builder: (_) => _HexSheet(cell: cell),
+      builder: (_) =>
+          _HexSheet(cell: cell, onOpenWorkout: widget.onOpenWorkout),
     );
   }
 
@@ -377,8 +407,10 @@ class _MapControls extends StatelessWidget {
 }
 
 class _HexSheet extends ConsumerWidget {
-  const _HexSheet({required this.cell});
+  const _HexSheet({required this.cell, required this.onOpenWorkout});
+
   final HexCell cell;
+  final Future<void> Function(HexCell cell) onOpenWorkout;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -421,7 +453,10 @@ class _HexSheet extends ConsumerWidget {
             BrandButton(
               label: cell.yours ? 'Train here' : 'Capture this hex',
               icon: Icons.fitness_center,
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                Navigator.pop(context);
+                await onOpenWorkout(cell);
+              },
             ),
           ],
         ),
