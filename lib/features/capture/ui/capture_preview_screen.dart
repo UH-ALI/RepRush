@@ -1,8 +1,8 @@
 /// Capture preview — the single entry point A hands C (roles.md Seam 3):
 /// rear-camera preview, ML Kit skeleton overlay, processing FPS, the
 /// tracking-lost state, and the rep-counting HUD (calibration progress,
-/// rep count, coaching cues). Supports all [MovementConfig]s (currently
-/// squat and push-up).
+/// rep count, coaching cues). Movement selection is WorkoutScreen's concern
+/// (Seam 3); this widget receives a [MovementConfig] and runs it.
 ///
 /// Ownership: A.
 library;
@@ -27,7 +27,11 @@ import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/models/models.dart';
 
 class CapturePreviewScreen extends ConsumerStatefulWidget {
-  const CapturePreviewScreen({super.key});
+  const CapturePreviewScreen({super.key, required this.config});
+
+  /// The movement to count reps for. Supplied by WorkoutScreen (Seam 3)
+  /// so the correct pipeline is started without duplicating selection logic.
+  final MovementConfig config;
 
   @override
   ConsumerState<CapturePreviewScreen> createState() =>
@@ -37,11 +41,6 @@ class CapturePreviewScreen extends ConsumerStatefulWidget {
 class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
     with WidgetsBindingObserver {
   late final CaptureController _controller;
-
-  /// The movement the current session will count reps for. Defaults to squat;
-  /// the picker at the top of the preview lets the user switch before
-  /// calibration completes.
-  MovementConfig _selectedConfig = squatConfig;
 
   /// True between the Finish press and the submit response arriving.
   /// The button is disabled while this is set so a double-tap cannot
@@ -59,24 +58,12 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
     WidgetsBinding.instance.addObserver(this);
     _controller = ref.read(captureControllerProvider.notifier);
     // Starts after the first frame — Riverpod forbids provider changes
-    // during widget life-cycles.
+    // during widget life-cycles. The squat session starts with the camera.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _controller.startSession(_selectedConfig);
+      _controller.startSession(widget.config);
       unawaited(_controller.start());
     });
-  }
-
-  /// Switches to [config] and restarts the session so calibration runs
-  /// with the new chain. Only called while the camera is already streaming.
-  void _onMovementSelected(MovementConfig config) {
-    if (config.id == _selectedConfig.id) return;
-    setState(() {
-      _selectedConfig = config;
-      _submitting = false;
-      _submitMessage = null;
-    });
-    _controller.startSession(config);
   }
 
   @override
@@ -182,8 +169,7 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
         child: switch (status.phase) {
           CapturePhase.streaming => _PreviewStack(
             status: status,
-            selectedConfig: _selectedConfig,
-            onMovementSelected: _onMovementSelected,
+            config: widget.config,
             submitting: _submitting,
             submitMessage: _submitMessage,
             submitSucceeded: _submitSucceeded,
@@ -211,16 +197,10 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
 /// The preview is rendered at its native portrait size and cover-fitted
 /// into the box — the same centre-crop transform `imageToViewPoint` applies
 /// to the landmarks, which is what keeps the skeleton on the body.
-
-/// The available movement configs the picker presents in order.
-const List<MovementConfig> _availableMovements = [squatConfig, pushUpConfig];
-
-
 class _PreviewStack extends ConsumerWidget {
   const _PreviewStack({
     required this.status,
-    required this.selectedConfig,
-    required this.onMovementSelected,
+    required this.config,
     required this.submitting,
     required this.onFinish,
     this.submitMessage,
@@ -228,8 +208,7 @@ class _PreviewStack extends ConsumerWidget {
   });
 
   final CaptureStatus status;
-  final MovementConfig selectedConfig;
-  final ValueChanged<MovementConfig> onMovementSelected;
+  final MovementConfig config;
   final bool submitting;
   final String? submitMessage;
   final bool submitSucceeded;
@@ -266,40 +245,12 @@ class _PreviewStack extends ConsumerWidget {
           builder: (context, frame, _) =>
               CustomPaint(painter: SkeletonOverlay(frame: frame)),
         ),
-        // Movement picker — top-left chips; fps chip moves below it.
         Positioned(
           top: RepRushTokens.spaceSm,
           left: RepRushTokens.spaceSm,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Movement selector chips.
-              Wrap(
-                spacing: RepRushTokens.spaceXs,
-                children: [
-                  for (final config in _availableMovements)
-                    FilterChip(
-                      label: Text(
-                        switch (config.id) {
-                          'squat' => 'Squat',
-                          'push_up' => 'Push-up',
-                          _ => config.id,
-                        },
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      selected: config.id == selectedConfig.id,
-                      onSelected: (_) => onMovementSelected(config),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                ],
-              ),
-              const SizedBox(height: RepRushTokens.spaceXs),
-              Chip(
-                avatar: const Icon(Icons.speed, size: 18),
-                label: Text('${status.fps} fps'),
-              ),
-            ],
+          child: Chip(
+            avatar: const Icon(Icons.speed, size: 18),
+            label: Text('${status.fps} fps'),
           ),
         ),
         if (kDebugMode)
@@ -317,6 +268,7 @@ class _PreviewStack extends ConsumerWidget {
               return Positioned.fill(
                 child: _PipelineHud(
                   frame: pipelineFrame,
+                  cues: config.cues,
                   submitting: submitting,
                   submitMessage: submitMessage,
                   submitSucceeded: submitSucceeded,
@@ -325,6 +277,9 @@ class _PreviewStack extends ConsumerWidget {
               );
             }
             if (!status.trackingLost) return const SizedBox.shrink();
+            final chain = config.chain;
+            final joints =
+                '${chain.proximal.toLowerCase()}s, ${chain.vertex.toLowerCase()}s, and ${chain.distal.toLowerCase()}s';
             return Positioned(
               left: RepRushTokens.spaceMd,
               right: RepRushTokens.spaceMd,
@@ -333,8 +288,8 @@ class _PreviewStack extends ConsumerWidget {
                 color: RepRushTokens.feedbackRed,
                 icon: LiveFeedbackState.red.icon,
                 text:
-                    '${LiveFeedbackState.red.cue} — stand where the camera '
-                    'can see your hips, knees, and ankles.',
+                    '${LiveFeedbackState.red.cue} — position yourself where the camera '
+                    'can see your $joints.',
               ),
             );
           },
@@ -351,6 +306,7 @@ class _PreviewStack extends ConsumerWidget {
 class _PipelineHud extends StatefulWidget {
   const _PipelineHud({
     required this.frame,
+    required this.cues,
     required this.submitting,
     required this.onFinish,
     this.submitMessage,
@@ -358,6 +314,7 @@ class _PipelineHud extends StatefulWidget {
   });
 
   final PipelineFrame frame;
+  final FeedbackCues cues;
   final bool submitting;
   final String? submitMessage;
   final bool submitSucceeded;
@@ -491,14 +448,14 @@ class _PipelineHudState extends State<_PipelineHud> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Stand still — calibrating'),
+                  Text(widget.cues.calibrating),
                   const SizedBox(height: RepRushTokens.spaceXs),
                   // Placement guidance up front: most bad calibrations are
                   // an off-axis camera or bent knees, not a code bug.
-                  const Text(
-                    'Face the camera, straighten legs, keep full body in frame',
+                  Text(
+                    widget.cues.placementGuidance,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
                   ),
                   const SizedBox(height: RepRushTokens.spaceSm),
                   if (frame.calibrationRejection case final reason?)
@@ -515,7 +472,10 @@ class _PipelineHudState extends State<_PipelineHud> {
                         const SizedBox(width: RepRushTokens.spaceXs),
                         Flexible(
                           child: Text(
-                            calibrationRejectionMessage(reason),
+                            calibrationRejectionMessage(
+                              reason,
+                              cues: widget.cues,
+                            ),
                             style: const TextStyle(
                               fontSize: 12,
                               color: RepRushTokens.feedbackAmber,

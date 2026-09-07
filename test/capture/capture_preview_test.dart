@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/features/capture/data/capture_controller.dart';
 import 'package:reprush/features/capture/data/capture_providers.dart';
+import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/ui/capture_preview_screen.dart';
 
 class _DeniedCaptureController extends CaptureController {
@@ -32,7 +33,10 @@ void main() {
         ],
         child: const MaterialApp(
           home: Scaffold(
-            body: SizedBox(height: 480, child: CapturePreviewScreen()),
+            body: SizedBox(
+              height: 480,
+              child: CapturePreviewScreen(config: squatConfig),
+            ),
           ),
         ),
       ),

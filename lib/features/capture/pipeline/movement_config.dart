@@ -59,6 +59,8 @@ class FeedbackCues {
     this.retryUnstableRest = 'Too much movement — stand still while we retry',
     this.retryImplausibleRest =
         'Stand side-on, straighten your legs, keep full body in frame — retrying',
+    this.placementGuidance =
+        'Face the camera, straighten legs, keep full body in frame',
   });
 
   /// The squat-proven default vocabulary.
@@ -75,6 +77,7 @@ class FeedbackCues {
   final String retryTooFewSamples;
   final String retryUnstableRest;
   final String retryImplausibleRest;
+  final String placementGuidance;
 }
 
 /// Threshold offsets applied to the calibrated rest signal. For squat
@@ -162,5 +165,7 @@ const pushUpConfig = MovementConfig(
     retryUnstableRest: 'Too much movement — hold still at the top',
     retryImplausibleRest:
         'Lie flat, arms straight, camera to the side — retrying',
+    placementGuidance:
+        'Lie flat, camera to the side — keep full body in frame',
   ),
 );

@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/ui/capture_placeholder.dart';
 import 'package:reprush/features/capture/ui/capture_preview_screen.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
@@ -16,6 +17,19 @@ import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
+
+// ---------------------------------------------------------------------------
+// Movements that have a capture-ready pipeline config on the client.
+// When the user selects one of these and a session is active, the live
+// camera is shown. All other movements in the catalogue get an informational
+// card — add entries here as new MovementConfigs land in Track A.
+// ---------------------------------------------------------------------------
+const Map<String, MovementConfig> _captureReadyConfigs = {
+  'squat': squatConfig,
+  'push_up': pushUpConfig,
+};
+
+
 
 class WorkoutScreen extends ConsumerStatefulWidget {
   const WorkoutScreen({super.key});
@@ -25,8 +39,9 @@ class WorkoutScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
-  /// Slice 1 ships Squat capture only. The selection is local entry-flow
-  /// state (Seam 3) — it never crosses into the capture feature.
+  /// Local movement selection state (Seam 3) — updated by the ChoiceChip
+  /// list and used to gate capture. Defaults to squat (first capture-ready
+  /// movement). Never crosses into the capture feature directly.
   String _selectedMovementId = 'squat';
 
   @override
@@ -64,17 +79,24 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
             ),
           ),
           const SizedBox(height: RepRushTokens.spaceMd),
-          if (session != null && _selectedMovementId == 'squat')
-            // A's single entry point, embedded once the one-shot session is
-            // open and Squat is selected.
-            const AspectRatio(aspectRatio: 3 / 4, child: CapturePreviewScreen())
+          // Show the camera when a session is active AND the selected movement
+          // has a capture-ready pipeline config. Otherwise show an informational
+          // card (movement not yet supported) or the pre-session placeholder.
+          if (session != null &&
+              _captureReadyConfigs.containsKey(_selectedMovementId))
+            AspectRatio(
+              aspectRatio: 3 / 4,
+              child: CapturePreviewScreen(
+                config: _captureReadyConfigs[_selectedMovementId]!,
+              ),
+            )
           else if (session != null)
-            const Card(
+            Card(
               child: Padding(
-                padding: EdgeInsets.all(RepRushTokens.spaceMd),
+                padding: const EdgeInsets.all(RepRushTokens.spaceMd),
                 child: Text(
-                  'Only Squat is capture-ready in Slice 1 — pick Squat to '
-                  'open the camera.',
+                  '${_selectedMovementId.replaceAll("_", " ")} is not yet '
+                  'capture-ready — select Squat or Push-up to open the camera.',
                 ),
               ),
             )
