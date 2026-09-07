@@ -7,12 +7,15 @@
 /// Ownership: C (ui).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
+import 'package:reprush/shared/widgets/widgets.dart';
 
 class MapScreen extends ConsumerWidget {
   const MapScreen({super.key});
@@ -28,14 +31,14 @@ class MapScreen extends ConsumerWidget {
           error: error,
           onRetry: () => ref.invalidate(hexesProvider),
         ),
-        data: (cells) => _MapPlaceholder(cells: cells),
+        data: (cells) => _MapView(cells: cells),
       ),
     );
   }
 }
 
-class _MapPlaceholder extends StatelessWidget {
-  const _MapPlaceholder({required this.cells});
+class _MapView extends StatelessWidget {
+  const _MapView({required this.cells});
 
   final List<HexCell> cells;
 
@@ -47,32 +50,31 @@ class _MapPlaceholder extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(RepRushTokens.spaceMd),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(RepRushTokens.spaceMd),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Hex map placeholder',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: RepRushTokens.spaceXs),
-                Text(
-                  'flutter_map renders ${cells.length} H3 res-8 hexes here '
-                  '(C-4). Polygons are computed server-side — no H3 on the '
-                  'client (§8 open-1).',
-                ),
-              ],
-            ),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Your territory', style: RepRushTokens.displayLarge.copyWith(fontSize: 28)),
+            Chip(label: Text('$yours hexes'), avatar: const Icon(Icons.hexagon, size: 16, color: RepRushTokens.brand)),
+          ],
         ),
         const SizedBox(height: RepRushTokens.spaceMd),
         _legendRow(context, Ownership.yours, yours),
         _legendRow(context, Ownership.rival, rivals),
         _legendRow(context, Ownership.unclaimed, open),
+        const SizedBox(height: RepRushTokens.spaceSm),
+        GlassCard(
+          padding: EdgeInsets.zero,
+          child: SizedBox(
+            height: 310,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(RepRushTokens.cornerCard),
+              child: CustomPaint(painter: _HexGridPainter(cells)),
+            ),
+          ),
+        ),
+        const SizedBox(height: RepRushTokens.spaceMd),
         const SizedBox(height: RepRushTokens.spaceLg),
-        Text('Top holders', style: Theme.of(context).textTheme.titleMedium),
+        Text('Top holders', style: RepRushTokens.sectionTitle),
         const _LeaderboardList(),
       ],
     );
@@ -100,6 +102,47 @@ class _MapPlaceholder extends StatelessWidget {
       ),
     );
   }
+
+}
+
+class _HexGridPainter extends CustomPainter {
+  _HexGridPainter(this.cells);
+  final List<HexCell> cells;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (cells.isEmpty) return;
+    final points = cells.expand((c) => c.polygon).toList();
+    final minLat = points.map((p) => p.lat).reduce(math.min);
+    final maxLat = points.map((p) => p.lat).reduce(math.max);
+    final minLng = points.map((p) => p.lng).reduce(math.min);
+    final maxLng = points.map((p) => p.lng).reduce(math.max);
+    final latSpan = (maxLat - minLat).abs().clamp(.000001, double.infinity);
+    final lngSpan = (maxLng - minLng).abs().clamp(.000001, double.infinity);
+    for (final cell in cells) {
+      final path = Path();
+      for (var i = 0; i < cell.polygon.length; i++) {
+        final point = cell.polygon[i];
+        final x = (point.lng - minLng) / lngSpan * size.width;
+        final y = size.height - (point.lat - minLat) / latSpan * size.height;
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      path.close();
+      final ownership = Ownership.fromWire(ownerHandle: cell.ownerHandle, yours: cell.yours);
+      canvas.drawPath(path, Paint()..color = ownership.color.withValues(alpha: .52));
+      canvas.drawPath(path, Paint()
+        ..color = ownership.color.withValues(alpha: .85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HexGridPainter oldDelegate) => oldDelegate.cells != cells;
 }
 
 class _LeaderboardList extends ConsumerWidget {

@@ -10,6 +10,7 @@ import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/challenges/data/challenges_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
+import 'package:reprush/shared/widgets/widgets.dart';
 
 class ChallengesScreen extends ConsumerWidget {
   const ChallengesScreen({super.key});
@@ -42,26 +43,36 @@ class _DailyChallengeCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progress = challenge.progress / challenge.target;
-    return Card(
+    return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Daily challenge',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Row(children: [
+              const Icon(Icons.bolt, color: RepRushTokens.brand),
+              const SizedBox(width: RepRushTokens.spaceSm),
+              Text('Daily challenge', style: RepRushTokens.sectionTitle),
+            ]),
             const SizedBox(height: RepRushTokens.spaceXs),
             Text(challenge.description),
             const SizedBox(height: RepRushTokens.spaceMd),
-            LinearProgressIndicator(value: progress.clamp(0.0, 1.0)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: 10,
+                color: RepRushTokens.brand,
+                backgroundColor: Colors.white12,
+              ),
+            ),
             const SizedBox(height: RepRushTokens.spaceXs),
             Text('${challenge.progress}/${challenge.target} verified reps'),
             const SizedBox(height: RepRushTokens.spaceMd),
-            FilledButton(
+            BrandButton(
               onPressed: challenge.claimed ? null : () => _claim(context, ref),
-              child: Text(challenge.claimed ? 'Claimed' : 'Claim reward'),
+              label: challenge.claimed ? 'Claimed' : 'Claim reward',
+              icon: challenge.claimed ? Icons.check : Icons.redeem,
             ),
           ],
         ),

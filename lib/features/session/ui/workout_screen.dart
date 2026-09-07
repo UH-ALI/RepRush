@@ -16,6 +16,7 @@ import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
+import 'package:reprush/shared/widgets/widgets.dart';
 
 class WorkoutScreen extends ConsumerStatefulWidget {
   const WorkoutScreen({super.key});
@@ -35,13 +36,26 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
     final spots = ref.watch(nearbySpotsProvider);
     final movements = ref.watch(movementsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Workout')),
-      body: ListView(
-        padding: const EdgeInsets.all(RepRushTokens.spaceMd),
-        children: [
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            title: const Text('Workout'),
+            actions: [
+              if (session != null)
+                const Padding(
+                  padding: EdgeInsets.only(right: RepRushTokens.spaceMd),
+                  child: Chip(avatar: Icon(Icons.circle, color: RepRushTokens.brand, size: 10), label: Text('LIVE')),
+                ),
+            ],
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(RepRushTokens.spaceMd),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
           _SessionCard(session: session),
           const SizedBox(height: RepRushTokens.spaceMd),
-          Text('Movement', style: Theme.of(context).textTheme.titleMedium),
+          Text('Choose your movement', style: RepRushTokens.sectionTitle),
           const SizedBox(height: RepRushTokens.spaceSm),
           movements.when(
             loading: () => const LoadingView(),
@@ -49,18 +63,21 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
               error: error,
               onRetry: () => ref.invalidate(movementsProvider),
             ),
-            data: (list) => Wrap(
-              spacing: RepRushTokens.spaceSm,
-              runSpacing: RepRushTokens.spaceSm,
-              children: [
-                for (final movement in list)
-                  ChoiceChip(
-                    label: Text(movement.id.replaceAll('_', ' ')),
+            data: (list) => SizedBox(
+              height: 146,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: list.length,
+                separatorBuilder: (_, _) => const SizedBox(width: RepRushTokens.spaceSm),
+                itemBuilder: (context, index) {
+                  final movement = list[index];
+                  return MovementChip(
+                    movement: movement,
                     selected: movement.id == _selectedMovementId,
-                    onSelected: (_) =>
-                        setState(() => _selectedMovementId = movement.id),
-                  ),
-              ],
+                    onTap: () => setState(() => _selectedMovementId = movement.id),
+                  );
+                },
+              ),
             ),
           ),
           const SizedBox(height: RepRushTokens.spaceMd),
@@ -69,7 +86,7 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
             // open and Squat is selected.
             const AspectRatio(aspectRatio: 3 / 4, child: CapturePreviewScreen())
           else if (session != null)
-            const Card(
+            const GlassCard(
               child: Padding(
                 padding: EdgeInsets.all(RepRushTokens.spaceMd),
                 child: Text(
@@ -81,7 +98,7 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
           else
             const CapturePlaceholder(),
           const SizedBox(height: RepRushTokens.spaceLg),
-          Text('Nearby spots', style: Theme.of(context).textTheme.titleMedium),
+          Text('Train at a spot', style: RepRushTokens.sectionTitle),
           spots.when(
             loading: () => const Padding(
               padding: EdgeInsets.all(RepRushTokens.spaceMd),
@@ -91,24 +108,30 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
               error: error,
               onRetry: () => ref.invalidate(nearbySpotsProvider),
             ),
-            data: (list) => Card(
-              child: Column(
-                children: [
-                  for (final spot in list)
-                    ListTile(
-                      leading: const Icon(Icons.place_outlined),
-                      title: Text(spot.name),
-                      subtitle: Text(
-                        spot.verified
-                            ? 'Verified · ${spot.distanceM?.round() ?? '?'} m'
-                            : 'Unverified — needs 3 athletes (E6)',
-                      ),
-                      trailing: spot.holderHandle == null
-                          ? null
-                          : Text('held by ${spot.holderHandle}'),
-                    ),
-                ],
+            data: (list) => SizedBox(
+              height: 86,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: list.length,
+                separatorBuilder: (_, _) => const SizedBox(width: RepRushTokens.spaceSm),
+                itemBuilder: (context, index) {
+                  final spot = list[index];
+                  return GlassCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.place, color: RepRushTokens.brand),
+                      const SizedBox(width: 8),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Text(spot.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        Text(spot.verified ? '${spot.distanceM?.round() ?? '?'} m · Verified' : 'Unverified', style: RepRushTokens.bodyLabel),
+                      ]),
+                    ]),
+                  );
+                },
               ),
+            ),
+          ),
+              ]),
             ),
           ),
         ],
@@ -125,7 +148,7 @@ class _SessionCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final active = session;
-    return Card(
+    return GlassCard(
       child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceMd),
         child: active == null
@@ -142,11 +165,11 @@ class _SessionCard extends ConsumerWidget {
                     'records the start context, and submit consumes it.',
                   ),
                   const SizedBox(height: RepRushTokens.spaceMd),
-                  FilledButton.icon(
+                  BrandButton(
+                    icon: Icons.play_arrow,
+                    label: 'Start session',
                     onPressed: () =>
                         ref.read(activeSessionProvider.notifier).start(),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Start session'),
                   ),
                 ],
               )

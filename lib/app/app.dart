@@ -75,11 +75,57 @@ class _AppShellState extends ConsumerState<AppShell> {
     // switches never re-fetch territory or boards.
     return Scaffold(
       body: IndexedStack(index: _index, children: _screens),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (index) => setState(() => _index = index),
-        destinations: _destinations,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 72,
+          decoration: const BoxDecoration(
+            color: Color(0xEE0C1511),
+            border: Border(top: BorderSide(color: Color(0x333DBB6E))),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              for (var i = 0; i < _destinations.length; i++)
+                _NavItem(
+                  destination: _destinations[i],
+                  selected: i == _index,
+                  onTap: () => setState(() => _index = i),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({required this.destination, required this.selected, required this.onTap});
+  final NavigationDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: RepRushTokens.fast,
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? RepRushTokens.brand.withValues(alpha: .16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          AnimatedSwitcher(
+            duration: RepRushTokens.fast,
+            child: selected ? destination.selectedIcon : destination.icon,
+          ),
+          const SizedBox(height: 3),
+          Text(destination.label, style: TextStyle(fontSize: 11, color: selected ? RepRushTokens.brand : Colors.white60, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    ),
+  );
 }
