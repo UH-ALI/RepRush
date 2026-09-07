@@ -7,12 +7,27 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/shared/widgets/widgets.dart';
 
 class CapturePlaceholder extends StatelessWidget {
-  const CapturePlaceholder({super.key});
+  const CapturePlaceholder({
+    super.key,
+    this.onStartWorkout,
+    this.isStarting = false,
+    this.statusMessage,
+    this.selectedMovementName,
+  });
+
+  final VoidCallback? onStartWorkout;
+  final bool isStarting;
+  final String? statusMessage;
+  final String? selectedMovementName;
 
   @override
   Widget build(BuildContext context) {
+    final movement = (selectedMovementName ?? 'squat').replaceAll('_', ' ');
+    final movementTitle = '${movement[0].toUpperCase()}${movement.substring(1)}';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceMd),
@@ -46,6 +61,31 @@ class CapturePlaceholder extends StatelessWidget {
                   ),
               ],
             ),
+            if (isStarting) ...[
+              const SizedBox(height: RepRushTokens.spaceMd),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: RepRushTokens.spaceSm),
+                  Text(
+                    statusMessage ?? 'Acquiring GPS fix & starting session...',
+                    style: RepRushTokens.bodyLabel,
+                  ),
+                ],
+              ),
+            ] else if (onStartWorkout != null) ...[
+              const SizedBox(height: RepRushTokens.spaceMd),
+              BrandButton(
+                icon: Icons.videocam,
+                label: 'Start $movementTitle & Open Camera',
+                onPressed: onStartWorkout,
+              ),
+            ],
           ],
         ),
       ),

@@ -1,13 +1,15 @@
 /// Device location access shared by session and territory features.
 library;
 
+import 'dart:async';
+
 import 'package:geolocator/geolocator.dart';
 import 'package:reprush/models/models.dart';
 
 Future<SessionLocation> readDeviceLocation() async {
   if (!await Geolocator.isLocationServiceEnabled()) {
     throw const LocationException(
-      'Location services are disabled. Enable them to view your territory.',
+      'Location services are disabled. Enable GPS to record your session and territory.',
     );
   }
 
@@ -18,16 +20,32 @@ Future<SessionLocation> readDeviceLocation() async {
   if (permission == LocationPermission.denied ||
       permission == LocationPermission.deniedForever) {
     throw const LocationException(
-      'Location permission is required to view your territory.',
+      'Location permission is required to record your workout session and territory.',
     );
   }
 
-  final position = await Geolocator.getCurrentPosition(
-    locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-  );
+  Position? position;
+  try {
+    position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 10),
+      ),
+    );
+  } on TimeoutException {
+    final lastKnown = await Geolocator.getLastKnownPosition();
+    if (lastKnown != null && lastKnown.accuracy <= 50) {
+      position = lastKnown;
+    } else {
+      throw const LocationException(
+        'GPS fix timed out. Move outdoors or near an open window and try again.',
+      );
+    }
+  }
+
   if (position.accuracy > 50) {
     throw const LocationException(
-      'GPS accuracy is too low. Move outdoors and try again.',
+      'GPS accuracy is too low (> 50 m). Move outdoors and try again.',
     );
   }
   return SessionLocation(

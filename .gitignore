@@ -53,3 +53,7 @@ app.*.map.json
 # Deno resolves Node built-ins against this folder, and the server test suite stops
 # running the same way the deployed Edge Runtime does.
 /node_modules/
+
+# Local secrets & credentials
+secrets.json
+*.secrets.json

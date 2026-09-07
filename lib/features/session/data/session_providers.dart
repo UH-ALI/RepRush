@@ -9,6 +9,8 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/api_providers.dart';
+import 'package:reprush/core/api/backend_config.dart';
+import 'package:reprush/core/api/stub/stub_repositories.dart' show DemoVenue;
 import 'package:reprush/core/location/location.dart';
 import 'package:reprush/models/models.dart';
 
@@ -61,6 +63,13 @@ final activeSessionProvider =
       ActiveSessionController.new,
     );
 
-Future<SessionLocation> readSessionLocation() async {
+Future<SessionLocation> readSessionLocation([BackendConfig? config]) async {
+  if (config != null && !config.isLive) {
+    return const SessionLocation(
+      lat: DemoVenue.lat,
+      lng: DemoVenue.lng,
+      accuracyM: 0,
+    );
+  }
   return readDeviceLocation();
 }

@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/core/api/api_providers.dart';
 import 'package:reprush/core/location/location.dart';
 import 'package:reprush/features/challenges/ui/challenges_screen.dart';
 import 'package:reprush/features/session/data/session_providers.dart';
@@ -110,7 +111,9 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     setState(() => _openingWorkout = true);
     try {
-      final location = await readSessionLocation();
+      final location = await readSessionLocation(
+        ref.read(backendConfigProvider),
+      );
       if (!_contains(cell.polygon, location.lat, location.lng)) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

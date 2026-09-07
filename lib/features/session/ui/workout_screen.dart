@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/core/api/api_providers.dart';
 import 'package:reprush/core/location/location.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/ui/capture_placeholder.dart';
@@ -46,6 +47,9 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
   /// movement). Never crosses into the capture feature directly.
   String _selectedMovementId = 'squat';
   late final AnimationController _energy;
+  bool _isStartingSession = false;
+  String? _startSessionStatus;
+  String? _selectedSpotId;
 
   @override
   void initState() {
@@ -60,6 +64,49 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
   void dispose() {
     _energy.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleStartSession({String? spotId}) async {
+    if (_isStartingSession) return;
+    setState(() {
+      _isStartingSession = true;
+      _startSessionStatus = 'Acquiring GPS fix...';
+    });
+    try {
+      final location = await readSessionLocation(
+        ref.read(backendConfigProvider),
+      );
+      if (!mounted) return;
+      setState(() {
+        _startSessionStatus = 'Starting session...';
+      });
+      await ref.read(activeSessionProvider.notifier).start(
+        location: location,
+        spotId: spotId ?? _selectedSpotId,
+      );
+    } on LocationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${error.code}: ${error.message}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to start session: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingSession = false;
+          _startSessionStatus = null;
+        });
+      }
+    }
   }
 
   @override
@@ -110,7 +157,12 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                       child: child,
                     ),
                   ),
-                  child: _SessionCard(session: session),
+                  child: _SessionCard(
+                    session: session,
+                    onStart: _handleStartSession,
+                    isStarting: _isStartingSession,
+                    statusMessage: _startSessionStatus,
+                  ),
                 ),
                 const SizedBox(height: RepRushTokens.spaceMd),
                 Text('Choose your movement', style: RepRushTokens.sectionTitle),
@@ -163,7 +215,15 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                     ),
                   )
                 else
-                  const CapturePlaceholder(),
+                  CapturePlaceholder(
+                    onStartWorkout:
+                        _captureReadyConfigs.containsKey(_selectedMovementId)
+                            ? _handleStartSession
+                            : null,
+                    isStarting: _isStartingSession,
+                    statusMessage: _startSessionStatus,
+                    selectedMovementName: _selectedMovementId,
+                  ),
                 const SizedBox(height: RepRushTokens.spaceLg),
                 Text('Train at a spot', style: RepRushTokens.sectionTitle),
                 spots.when(
@@ -184,7 +244,14 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                           const SizedBox(width: RepRushTokens.spaceSm),
                       itemBuilder: (context, index) {
                         final spot = list[index];
+                        final isSelected = spot.id == _selectedSpotId;
                         return GlassCard(
+                          glow: isSelected,
+                          onTap: () {
+                            setState(() {
+                              _selectedSpotId = isSelected ? null : spot.id;
+                            });
+                          },
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 10,
@@ -192,9 +259,11 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.place,
-                                color: RepRushTokens.brand,
+                                color: isSelected
+                                    ? RepRushTokens.brand
+                                    : RepRushTokens.brand.withValues(alpha: 0.7),
                               ),
                               const SizedBox(width: 8),
                               Column(
@@ -203,8 +272,9 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                                 children: [
                                   Text(
                                     spot.name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
+                                      color: isSelected ? RepRushTokens.brand : null,
                                     ),
                                   ),
                                   Text(
@@ -215,6 +285,14 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
                                   ),
                                 ],
                               ),
+                              if (isSelected) ...[
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.check_circle,
+                                  size: 16,
+                                  color: RepRushTokens.brand,
+                                ),
+                              ],
                             ],
                           ),
                         );
@@ -231,13 +309,21 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
   }
 }
 
-class _SessionCard extends ConsumerWidget {
-  const _SessionCard({required this.session});
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.session,
+    required this.onStart,
+    this.isStarting = false,
+    this.statusMessage,
+  });
 
   final SessionStart? session;
+  final VoidCallback onStart;
+  final bool isStarting;
+  final String? statusMessage;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final active = session;
     return GlassCard(
       child: Padding(
@@ -256,30 +342,28 @@ class _SessionCard extends ConsumerWidget {
                     'records the start context, and submit consumes it.',
                   ),
                   const SizedBox(height: RepRushTokens.spaceMd),
-                  BrandButton(
-                    icon: Icons.play_arrow,
-                    label: 'Start session',
-                    onPressed: () async {
-                      try {
-                        final location = await readSessionLocation();
-                        await ref
-                            .read(activeSessionProvider.notifier)
-                            .start(location: location);
-                      } on LocationException catch (error) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(error.message)));
-                      } on ApiException catch (error) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${error.code}: ${error.message}'),
-                          ),
-                        );
-                      }
-                    },
-                  ),
+                  if (isStarting)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: RepRushTokens.spaceSm),
+                        Text(
+                          statusMessage ?? 'Starting session...',
+                          style: RepRushTokens.bodyLabel,
+                        ),
+                      ],
+                    )
+                  else
+                    BrandButton(
+                      icon: Icons.play_arrow,
+                      label: 'Start session',
+                      onPressed: onStart,
+                    ),
                 ],
               )
             : Column(
