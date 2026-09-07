@@ -125,3 +125,42 @@ const squatConfig = MovementConfig(
   romTargetOffset: -95.0,
   decreasing: true,
 );
+
+// ---------------------------------------------------------------------------
+// Push-up config — elbow chain (shoulder → elbow → wrist), bilateral.
+// Camera placement: athlete horizontal on floor, camera to the side at
+// ~hip height so the full arm extension and chest-to-floor depth are visible.
+//
+// Threshold rationale (UNTUNED — replace after measuring a real recorded set):
+//   Rest ≈ 160° (arms nearly straight at top, slight natural bend).
+//   startDescentOffset  −8 → fires at ≈152° (arms start to bend)
+//   enterPeakOffset    −70 → fires at ≈ 90° (elbow at roughly parallel-depth)
+//   enterRestOffset    −20 → rep counted on the way back up past ≈140°
+//   romTargetOffset    −90 → full-ROM grade target ≈ 70° (chest near floor)
+// ---------------------------------------------------------------------------
+const pushUpConfig = MovementConfig(
+  id: 'push_up',
+  chain: JointChain.arm,
+  // UNTUNED — measured against a rest signal near 160°; replace with values
+  // from a recorded set once real landmark data is available.
+  startDescentOffset: -8.0,
+  enterPeakOffset: -70.0,
+  enterRestOffset: -20.0,
+  romTargetOffset: -90.0,
+  decreasing: true,
+  cues: FeedbackCues(
+    calibrating: 'Hold the top position — calibrating',
+    ready: 'Ready',
+    descending: 'Lower your chest',
+    depthReached: 'Good depth',
+    ascending: 'Push up',
+    repCounted: 'Rep counted',
+    shallowReturn: 'Not counted — go lower next rep',
+    trackingLost: 'Tracking lost',
+    retryTooFewSamples:
+        'Not enough steady frames yet — hold the top position',
+    retryUnstableRest: 'Too much movement — hold still at the top',
+    retryImplausibleRest:
+        'Lie flat, arms straight, camera to the side — retrying',
+  ),
+);

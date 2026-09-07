@@ -1,7 +1,8 @@
 /// Capture preview — the single entry point A hands C (roles.md Seam 3):
 /// rear-camera preview, ML Kit skeleton overlay, processing FPS, the
-/// tracking-lost state, and the squat-counting HUD (calibration progress,
-/// rep count, coaching cues).
+/// tracking-lost state, and the rep-counting HUD (calibration progress,
+/// rep count, coaching cues). Supports all [MovementConfig]s (currently
+/// squat and push-up).
 ///
 /// Ownership: A.
 library;
@@ -37,6 +38,11 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
     with WidgetsBindingObserver {
   late final CaptureController _controller;
 
+  /// The movement the current session will count reps for. Defaults to squat;
+  /// the picker at the top of the preview lets the user switch before
+  /// calibration completes.
+  MovementConfig _selectedConfig = squatConfig;
+
   /// True between the Finish press and the submit response arriving.
   /// The button is disabled while this is set so a double-tap cannot
   /// submit the same one-shot session twice.
@@ -53,12 +59,24 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
     WidgetsBinding.instance.addObserver(this);
     _controller = ref.read(captureControllerProvider.notifier);
     // Starts after the first frame — Riverpod forbids provider changes
-    // during widget life-cycles. The squat session starts with the camera.
+    // during widget life-cycles.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _controller.startSession(squatConfig);
+      _controller.startSession(_selectedConfig);
       unawaited(_controller.start());
     });
+  }
+
+  /// Switches to [config] and restarts the session so calibration runs
+  /// with the new chain. Only called while the camera is already streaming.
+  void _onMovementSelected(MovementConfig config) {
+    if (config.id == _selectedConfig.id) return;
+    setState(() {
+      _selectedConfig = config;
+      _submitting = false;
+      _submitMessage = null;
+    });
+    _controller.startSession(config);
   }
 
   @override
@@ -164,6 +182,8 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
         child: switch (status.phase) {
           CapturePhase.streaming => _PreviewStack(
             status: status,
+            selectedConfig: _selectedConfig,
+            onMovementSelected: _onMovementSelected,
             submitting: _submitting,
             submitMessage: _submitMessage,
             submitSucceeded: _submitSucceeded,
@@ -191,9 +211,16 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
 /// The preview is rendered at its native portrait size and cover-fitted
 /// into the box — the same centre-crop transform `imageToViewPoint` applies
 /// to the landmarks, which is what keeps the skeleton on the body.
+
+/// The available movement configs the picker presents in order.
+const List<MovementConfig> _availableMovements = [squatConfig, pushUpConfig];
+
+
 class _PreviewStack extends ConsumerWidget {
   const _PreviewStack({
     required this.status,
+    required this.selectedConfig,
+    required this.onMovementSelected,
     required this.submitting,
     required this.onFinish,
     this.submitMessage,
@@ -201,6 +228,8 @@ class _PreviewStack extends ConsumerWidget {
   });
 
   final CaptureStatus status;
+  final MovementConfig selectedConfig;
+  final ValueChanged<MovementConfig> onMovementSelected;
   final bool submitting;
   final String? submitMessage;
   final bool submitSucceeded;
@@ -237,12 +266,40 @@ class _PreviewStack extends ConsumerWidget {
           builder: (context, frame, _) =>
               CustomPaint(painter: SkeletonOverlay(frame: frame)),
         ),
+        // Movement picker — top-left chips; fps chip moves below it.
         Positioned(
           top: RepRushTokens.spaceSm,
           left: RepRushTokens.spaceSm,
-          child: Chip(
-            avatar: const Icon(Icons.speed, size: 18),
-            label: Text('${status.fps} fps'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Movement selector chips.
+              Wrap(
+                spacing: RepRushTokens.spaceXs,
+                children: [
+                  for (final config in _availableMovements)
+                    FilterChip(
+                      label: Text(
+                        switch (config.id) {
+                          'squat' => 'Squat',
+                          'push_up' => 'Push-up',
+                          _ => config.id,
+                        },
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      selected: config.id == selectedConfig.id,
+                      onSelected: (_) => onMovementSelected(config),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              const SizedBox(height: RepRushTokens.spaceXs),
+              Chip(
+                avatar: const Icon(Icons.speed, size: 18),
+                label: Text('${status.fps} fps'),
+              ),
+            ],
           ),
         ),
         if (kDebugMode)
