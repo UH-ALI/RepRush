@@ -25,10 +25,21 @@ class WorkoutScreen extends ConsumerStatefulWidget {
   ConsumerState<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
-class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
+class _WorkoutScreenState extends ConsumerState<WorkoutScreen>
+    with SingleTickerProviderStateMixin {
   /// Slice 1 ships Squat capture only. The selection is local entry-flow
   /// state (Seam 3) — it never crosses into the capture feature.
   String _selectedMovementId = 'squat';
+  late final AnimationController _energy = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..forward();
+
+  @override
+  void dispose() {
+    _energy.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,9 +54,19 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
             title: const Text('Workout'),
             actions: [
               if (session != null)
-                const Padding(
-                  padding: EdgeInsets.only(right: RepRushTokens.spaceMd),
-                  child: Chip(avatar: Icon(Icons.circle, color: RepRushTokens.brand, size: 10), label: Text('LIVE')),
+                Padding(
+                  padding: const EdgeInsets.only(right: RepRushTokens.spaceMd),
+                  child: AnimatedBuilder(
+                    animation: _energy,
+                    builder: (context, child) => Transform.scale(
+                      scale: 1 + (_energy.value * .04),
+                      child: child,
+                    ),
+                    child: const Chip(
+                      avatar: Icon(Icons.circle, color: RepRushTokens.brand, size: 10),
+                      label: Text('LIVE'),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -53,7 +74,19 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
             padding: const EdgeInsets.all(RepRushTokens.spaceMd),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-          _SessionCard(session: session),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: RepRushTokens.medium,
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 18 * (1 - value)),
+                child: child,
+              ),
+            ),
+            child: _SessionCard(session: session),
+          ),
           const SizedBox(height: RepRushTokens.spaceMd),
           Text('Choose your movement', style: RepRushTokens.sectionTitle),
           const SizedBox(height: RepRushTokens.spaceSm),

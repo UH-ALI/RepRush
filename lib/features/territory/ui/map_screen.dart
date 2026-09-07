@@ -1,17 +1,14 @@
-/// Territory map screen placeholder (requirements.md D1).
-///
-/// Real hex rendering lands with C-4 (`flutter_map` + server-computed H3
-/// polygons, B-10). This placeholder proves the provider wiring end to end
-/// and shows the accessible ownership legend (N9: colour + label + icon).
+/// Territory map with server-provided H3 polygons over OpenStreetMap tiles.
 ///
 /// Ownership: C (ui).
 library;
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/core/api/stub/stub_repositories.dart' show DemoVenue;
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
@@ -37,112 +34,227 @@ class MapScreen extends ConsumerWidget {
   }
 }
 
-class _MapView extends StatelessWidget {
+class _MapView extends StatefulWidget {
   const _MapView({required this.cells});
 
   final List<HexCell> cells;
 
   @override
+  State<_MapView> createState() => _MapViewState();
+}
+
+class _MapViewState extends State<_MapView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..forward();
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final cells = widget.cells;
     final yours = cells.where((c) => c.yours).length;
     final rivals = cells.where((c) => !c.yours && c.ownerHandle != null).length;
     final open = cells.length - yours - rivals;
-    return ListView(
-      padding: const EdgeInsets.all(RepRushTokens.spaceMd),
+    return Stack(
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Your territory', style: RepRushTokens.displayLarge.copyWith(fontSize: 28)),
-            Chip(label: Text('$yours hexes'), avatar: const Icon(Icons.hexagon, size: 16, color: RepRushTokens.brand)),
-          ],
-        ),
-        const SizedBox(height: RepRushTokens.spaceMd),
-        _legendRow(context, Ownership.yours, yours),
-        _legendRow(context, Ownership.rival, rivals),
-        _legendRow(context, Ownership.unclaimed, open),
-        const SizedBox(height: RepRushTokens.spaceSm),
-        GlassCard(
-          padding: EdgeInsets.zero,
-          child: SizedBox(
-            height: 310,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(RepRushTokens.cornerCard),
-              child: CustomPaint(painter: _HexGridPainter(cells)),
+        FlutterMap(
+          options: MapOptions(
+            initialCenter: LatLng(DemoVenue.lat, DemoVenue.lng),
+            initialZoom: 14.2,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),
           ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.repush.app',
+              tileBuilder: (context, child, tile) => ColorFiltered(
+                colorFilter: const ColorFilter.matrix(<double>[
+                  .35, 0, 0, 0, 0,
+                  0, .45, 0, 0, 0,
+                  0, 0, .40, 0, 0,
+                  0, 0, 0, 1, 0,
+                ]),
+                child: child,
+              ),
+            ),
+            PolygonLayer(
+              polygons: [
+                for (final cell in cells)
+                  Polygon<Object>(
+                    points: [
+                      for (final point in cell.polygon)
+                        LatLng(point.lat, point.lng),
+                    ],
+                    color: Ownership.fromWire(
+                      ownerHandle: cell.ownerHandle,
+                      yours: cell.yours,
+                    ).color.withValues(alpha: .48),
+                    borderColor: Ownership.fromWire(
+                      ownerHandle: cell.ownerHandle,
+                      yours: cell.yours,
+                    ).color,
+                    borderStrokeWidth: 2.5,
+                  ),
+              ],
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: LatLng(DemoVenue.lat, DemoVenue.lng),
+                  width: 52,
+                  height: 52,
+                  child: AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (context, child) => Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: RepRushTokens.brand.withValues(alpha: .16),
+                        border: Border.all(
+                          color: RepRushTokens.brand.withValues(
+                            alpha: .45 + (_pulse.value * .4),
+                          ),
+                          width: 2 + (_pulse.value * 3),
+                        ),
+                      ),
+                      child: const Icon(Icons.my_location, color: RepRushTokens.brand),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-        const SizedBox(height: RepRushTokens.spaceMd),
-        const SizedBox(height: RepRushTokens.spaceLg),
-        Text('Top holders', style: RepRushTokens.sectionTitle),
-        const _LeaderboardList(),
+        Positioned(
+          left: RepRushTokens.spaceMd,
+          right: RepRushTokens.spaceMd,
+          top: RepRushTokens.spaceMd,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _MapPill(
+                icon: Icons.hexagon,
+                text: '$yours OWNED',
+                color: RepRushTokens.brand,
+              ),
+              _MapPill(
+                icon: Icons.my_location,
+                text: 'LIVE ZONE',
+                color: Colors.white,
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: RepRushTokens.spaceMd,
+          right: RepRushTokens.spaceMd,
+          bottom: RepRushTokens.spaceMd,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                '© OpenStreetMap contributors',
+                style: TextStyle(color: Colors.white70, fontSize: 9),
+              ),
+              const SizedBox(height: 4),
+              GlassCard(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _MapLegend(ownership: Ownership.yours, count: yours),
+                    _MapLegend(ownership: Ownership.rival, count: rivals),
+                    _MapLegend(ownership: Ownership.unclaimed, count: open),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          right: RepRushTokens.spaceMd,
+          top: 76,
+          child: _LeaderboardButton(),
+        ),
       ],
     );
   }
-
-  Widget _legendRow(BuildContext context, Ownership ownership, int count) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: RepRushTokens.spaceXs),
-      child: Row(
-        children: [
-          Icon(ownership.icon, color: ownership.color),
-          const SizedBox(width: RepRushTokens.spaceSm),
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: ownership.color,
-              borderRadius: BorderRadius.circular(RepRushTokens.cornerChip / 2),
-            ),
-          ),
-          const SizedBox(width: RepRushTokens.spaceSm),
-          Expanded(child: Text(ownership.label)),
-          Text('$count hexes'),
-        ],
-      ),
-    );
-  }
-
 }
 
-class _HexGridPainter extends CustomPainter {
-  _HexGridPainter(this.cells);
-  final List<HexCell> cells;
+class _LeaderboardButton extends ConsumerWidget {
+  const _LeaderboardButton();
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (cells.isEmpty) return;
-    final points = cells.expand((c) => c.polygon).toList();
-    final minLat = points.map((p) => p.lat).reduce(math.min);
-    final maxLat = points.map((p) => p.lat).reduce(math.max);
-    final minLng = points.map((p) => p.lng).reduce(math.min);
-    final maxLng = points.map((p) => p.lng).reduce(math.max);
-    final latSpan = (maxLat - minLat).abs().clamp(.000001, double.infinity);
-    final lngSpan = (maxLng - minLng).abs().clamp(.000001, double.infinity);
-    for (final cell in cells) {
-      final path = Path();
-      for (var i = 0; i < cell.polygon.length; i++) {
-        final point = cell.polygon[i];
-        final x = (point.lng - minLng) / lngSpan * size.width;
-        final y = size.height - (point.lat - minLat) / latSpan * size.height;
-        if (i == 0) {
-          path.moveTo(x, y);
-        } else {
-          path.lineTo(x, y);
-        }
-      }
-      path.close();
-      final ownership = Ownership.fromWire(ownerHandle: cell.ownerHandle, yours: cell.yours);
-      canvas.drawPath(path, Paint()..color = ownership.color.withValues(alpha: .52));
-      canvas.drawPath(path, Paint()
-        ..color = ownership.color.withValues(alpha: .85)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5);
-    }
-  }
+  Widget build(BuildContext context, WidgetRef ref) => IconButton(
+    tooltip: 'Leaderboard',
+    style: IconButton.styleFrom(
+      backgroundColor: const Color(0xDD0C1511),
+      foregroundColor: RepRushTokens.brand,
+    ),
+    icon: const Icon(Icons.leaderboard),
+    onPressed: () => showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: RepRushTokens.surfaceDark,
+      builder: (_) => const SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(RepRushTokens.spaceMd),
+          child: _LeaderboardList(),
+        ),
+      ),
+    ),
+  );
+}
+
+class _MapPill extends StatelessWidget {
+  const _MapPill({required this.icon, required this.text, required this.color});
+  final IconData icon;
+  final String text;
+  final Color color;
 
   @override
-  bool shouldRepaint(covariant _HexGridPainter oldDelegate) => oldDelegate.cells != cells;
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: const Color(0xDD0C1511),
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: color.withValues(alpha: .55)),
+      boxShadow: RepRushTokens.cardShadow,
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+      ]),
+    ),
+  );
+}
+
+class _MapLegend extends StatelessWidget {
+  const _MapLegend({required this.ownership, required this.count});
+  final Ownership ownership;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+    Icon(ownership.icon, color: ownership.color, size: 16),
+    const SizedBox(width: 4),
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(ownership.label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+        Text('$count hexes', style: const TextStyle(fontSize: 9, color: Colors.white70)),
+      ],
+    ),
+  ]);
 }
 
 class _LeaderboardList extends ConsumerWidget {
