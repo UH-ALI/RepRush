@@ -253,9 +253,20 @@ class _PreviewStack extends ConsumerWidget {
             label: Text('${status.fps} fps'),
           ),
         ),
+        Positioned(
+          top: RepRushTokens.spaceSm,
+          right: RepRushTokens.spaceSm,
+          child: IconButton.filled(
+            onPressed: () => unawaited(
+              ref.read(captureControllerProvider.notifier).switchCamera(),
+            ),
+            tooltip: 'Switch camera',
+            icon: const Icon(Icons.flip_camera_ios),
+          ),
+        ),
         if (kDebugMode)
           const Positioned(
-            top: RepRushTokens.spaceSm,
+            top: RepRushTokens.spaceSm + 48,
             right: RepRushTokens.spaceSm,
             child: CaptureDebugPanel(),
           ),

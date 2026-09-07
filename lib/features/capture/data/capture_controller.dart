@@ -135,6 +135,7 @@ class CaptureController extends Notifier<CaptureStatus> {
 
   bool _starting = false;
   bool _streaming = false;
+  CameraLensDirection _lensDirection = CameraLensDirection.back;
   int _missStreak = 0;
   int _inferences = 0;
   int _currentFps = 0;
@@ -249,8 +250,8 @@ class CaptureController extends Notifier<CaptureStatus> {
     return _diagRecorder?.entryCount ?? 0;
   }
 
-  /// Opens the rear camera and starts the frame → inference pump. Idempotent
-  /// while streaming or already starting.
+  /// Opens the selected camera and starts the frame → inference pump.
+  /// Idempotent while streaming or already starting.
   Future<void> start() async {
     if (state.phase == CapturePhase.streaming || _starting) return;
     _starting = true;
@@ -261,14 +262,14 @@ class CaptureController extends Notifier<CaptureStatus> {
         DeviceOrientation.portraitUp,
       ]);
       final cameras = await availableCameras();
-      CameraDescription? back;
+      CameraDescription? selected;
       for (final camera in cameras) {
-        if (camera.lensDirection == CameraLensDirection.back) {
-          back = camera;
+        if (camera.lensDirection == _lensDirection) {
+          selected = camera;
           break;
         }
       }
-      if (back == null) {
+      if (selected == null) {
         state = const CaptureStatus(
           phase: CapturePhase.unavailable,
           message: 'No camera was found on this device.',
@@ -278,7 +279,7 @@ class CaptureController extends Notifier<CaptureStatus> {
       // NV21 on Android: camera_android_camerax streams real NV21 for this
       // format group (see input_image_adapter.dart).
       final controller = CameraController(
-        back,
+        selected,
         ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.nv21,
@@ -315,6 +316,18 @@ class CaptureController extends Notifier<CaptureStatus> {
     } finally {
       _starting = false;
     }
+  }
+
+  /// Switches between the front and rear cameras without resetting the
+  /// active movement pipeline or its evidence.
+  Future<void> switchCamera() async {
+    if (_starting || state.phase != CapturePhase.streaming) return;
+    _lensDirection = _lensDirection == CameraLensDirection.back
+        ? CameraLensDirection.front
+        : CameraLensDirection.back;
+    await _releaseCamera();
+    state = const CaptureStatus(phase: CapturePhase.initializing);
+    await start();
   }
 
   /// App backgrounded: release the camera but keep the detector warm so
