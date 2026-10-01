@@ -11,11 +11,11 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/core/dev_flags.dart';
 import 'package:reprush/features/capture/data/capture_controller.dart';
 import 'package:reprush/features/capture/data/capture_providers.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
@@ -171,7 +171,7 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
       final diag = _controller.lastFinishDiagnostic;
       setState(() {
         _submitting = false;
-        _submitMessage = kDebugMode && diag.isNotEmpty
+        _submitMessage = showDevHud && diag.isNotEmpty
             ? diag
             : 'Not enough of that set was captured to verify it. Keep your '
                   'whole body in frame and do at least one full rep.';
@@ -301,7 +301,7 @@ class _PreviewStack extends ConsumerWidget {
           builder: (context, frame, _) =>
               CustomPaint(painter: SkeletonOverlay(frame: frame)),
         ),
-        if (kDebugMode)
+        if (showDevHud)
           Positioned(
             top: RepRushTokens.spaceSm,
             left: RepRushTokens.spaceSm,
@@ -321,7 +321,7 @@ class _PreviewStack extends ConsumerWidget {
             icon: const Icon(Icons.flip_camera_ios),
           ),
         ),
-        if (kDebugMode)
+        if (showDevHud)
           const Positioned(
             top: RepRushTokens.spaceSm + 48,
             right: RepRushTokens.spaceSm,
@@ -608,7 +608,7 @@ class _PipelineHudState extends State<_PipelineHud> {
                 // a failure opens the full diagnostic on tap.
                 if (widget.submitMessage != null && !widget.submitSucceeded)
                   GestureDetector(
-                    onTap: kDebugMode
+                    onTap: showDevHud
                         ? () => _showDiagnosticDialog(
                             context,
                             widget.submitMessage!,
@@ -635,7 +635,7 @@ class _PipelineHudState extends State<_PipelineHud> {
                           const SizedBox(width: RepRushTokens.spaceSm),
                           Expanded(
                             child: Text(
-                              kDebugMode
+                              showDevHud
                                   ? 'Set not verified — tap for diagnostic'
                                   : widget.submitMessage!,
                               style: const TextStyle(

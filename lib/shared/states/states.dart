@@ -3,9 +3,9 @@
 /// Ownership: C.
 library;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/core/dev_flags.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/errors.dart';
 
@@ -73,7 +73,7 @@ class ErrorView extends StatelessWidget {
             Text(describeError(error), textAlign: TextAlign.center),
             // The contract code helps a developer at the venue; an athlete
             // never needs it.
-            if (api != null && kDebugMode) ...[
+            if (api != null && showDevHud) ...[
               const SizedBox(height: RepRushTokens.spaceXs),
               Text(
                 'code: ${api.code}',

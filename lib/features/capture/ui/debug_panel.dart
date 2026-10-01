@@ -4,8 +4,8 @@
 /// and frame rate, plus Recalibrate and diagnostics-export actions.
 ///
 /// Everything shown is local-only and never enters Evidence. The panel is
-/// instantiated behind a `kDebugMode` gate in the preview stack, so it is
-/// dead code in release builds.
+/// instantiated behind the `showDevHud` gate in the preview stack, so it is
+/// dead code unless built with `--dart-define=REPRUSH_DEV_HUD=true`.
 ///
 /// Ownership: A.
 library;
