@@ -13,6 +13,7 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/capture/data/capture_controller.dart';
@@ -133,14 +134,17 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
   Future<void> _onFinishPressed() async {
     debugPrint('[Evidence-Diag] >>> _onFinishPressed called');
     if (_submitting) {
-      debugPrint('[Evidence-Diag] >>> _onFinishPressed: already submitting, skip');
+      debugPrint(
+        '[Evidence-Diag] >>> _onFinishPressed: already submitting, skip',
+      );
       return;
     }
     final session = ref.read(activeSessionProvider);
-    final location =
-        ref.read(activeSessionProvider.notifier).startLocation;
-    debugPrint('[Evidence-Diag] >>> session=${session != null}, '
-        'location=${location != null}');
+    final location = ref.read(activeSessionProvider.notifier).startLocation;
+    debugPrint(
+      '[Evidence-Diag] >>> session=${session != null}, '
+      'location=${location != null}',
+    );
     if (session == null || location == null) {
       setState(() {
         _submitMessage = 'Session expired — start a new one.';
@@ -159,8 +163,10 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
       session: session,
       location: location,
     );
-    debugPrint('[Evidence-Diag] >>> finishSet returned '
-        '${evidence != null ? "OK" : "NULL"}');
+    debugPrint(
+      '[Evidence-Diag] >>> finishSet returned '
+      '${evidence != null ? "OK" : "NULL"}',
+    );
     if (evidence == null) {
       final diag = _controller.lastFinishDiagnostic;
       setState(() {
@@ -409,6 +415,11 @@ class _PipelineHudState extends State<_PipelineHud> {
     }
     _wasCalibrating = frame.calibrating;
 
+    // A felt tick per counted rep — confirmation without looking at the phone.
+    if (frame.repCount > oldWidget.frame.repCount) {
+      unawaited(HapticFeedback.mediumImpact());
+    }
+
     final proposed = frame.feedback;
     final now = DateTime.now();
     if (proposed.cue != _shownCue.cue &&
@@ -553,131 +564,118 @@ class _PipelineHudState extends State<_PipelineHud> {
             ),
           )
         else if (_showReadyGo)
-          const Center(
-            child: Text(
-              'Ready — go!',
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-            ),
-          )
-        else ...[          // Rep counter + Finish button — bottom-right, only while counting.
+          const Center(child: Text('GO!', style: RepRushTokens.heroNumber))
+        else ...[
+          // The rep counter — the hero of the screen, readable from across
+          // the room while the phone is propped up.
           Positioned(
+            top: 64,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                AnimatedSwitcher(
+                  duration: RepRushTokens.fast,
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: Tween(begin: 1.25, end: 1.0).animate(animation),
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: Text(
+                    '${frame.repCount}',
+                    key: ValueKey(frame.repCount),
+                    style: RepRushTokens.heroNumber,
+                  ),
+                ),
+                Text(
+                  'REPS',
+                  style: RepRushTokens.bodyLabel.copyWith(
+                    letterSpacing: 3,
+                    shadows: const [Shadow(blurRadius: 8)],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: RepRushTokens.spaceMd,
             right: RepRushTokens.spaceMd,
             bottom: RepRushTokens.spaceMd,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: RepRushTokens.spaceMd,
-                    vertical: RepRushTokens.spaceSm,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(
-                      RepRushTokens.cornerChip,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.repeat),
-                      const SizedBox(width: RepRushTokens.spaceSm),
-                      Text(
-                        '${frame.repCount}',
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: RepRushTokens.spaceSm),
-                // Finish button — enabled only after calibration and
-                // while no submit is in flight.
-                FilledButton.icon(
-                  onPressed: widget.submitting ? null : widget.onFinish,
-                  icon: widget.submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.check),
-                  label: Text(
-                    widget.submitting ? 'Submitting…' : 'Finish',
-                  ),
-                ),
-                // Submit outcome / diagnostic — shown inline after a
-                // press.  On failure the full diagnostic is tappable
-                // and opens in a centred full-screen scrollable dialog.
-                if (widget.submitMessage != null && widget.submitSucceeded)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      top: RepRushTokens.spaceXs,
-                    ),
-                    child: Text(
-                      widget.submitMessage!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: RepRushTokens.brand,
-                      ),
-                    ),
-                  ),
+                // Submit outcome — shown inline after a press. In debug builds
+                // a failure opens the full diagnostic on tap.
                 if (widget.submitMessage != null && !widget.submitSucceeded)
                   GestureDetector(
-                    onTap: () => _showDiagnosticDialog(
-                      context,
-                      widget.submitMessage!,
-                    ),
+                    onTap: kDebugMode
+                        ? () => _showDiagnosticDialog(
+                            context,
+                            widget.submitMessage!,
+                          )
+                        : null,
                     child: Container(
                       margin: const EdgeInsets.only(
-                        top: RepRushTokens.spaceXs,
+                        bottom: RepRushTokens.spaceSm,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: RepRushTokens.spaceSm,
-                        vertical: RepRushTokens.spaceXs,
-                      ),
+                      padding: const EdgeInsets.all(RepRushTokens.spaceSm),
                       decoration: BoxDecoration(
                         color: Colors.black87,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(
+                          RepRushTokens.cornerChip,
+                        ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.info_outline,
-                            size: 14,
+                            size: 16,
                             color: RepRushTokens.feedbackAmber,
                           ),
-                          SizedBox(width: 6),
-                          Text(
-                            'Evidence incomplete — tap for diagnostic',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: RepRushTokens.feedbackAmber,
+                          const SizedBox(width: RepRushTokens.spaceSm),
+                          Expanded(
+                            child: Text(
+                              kDebugMode
+                                  ? 'Set not verified — tap for diagnostic'
+                                  : widget.submitMessage!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: RepRushTokens.feedbackAmber,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
+                // Coaching cue — N9 icon + text + colour.
+                _Banner(
+                  color: bannerColor,
+                  icon: bannerIcon,
+                  text: _shownCue.cue,
+                ),
+                const SizedBox(height: RepRushTokens.spaceSm),
+                SizedBox(
+                  height: 56,
+                  child: FilledButton.icon(
+                    onPressed: widget.submitting ? null : widget.onFinish,
+                    icon: widget.submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.flag),
+                    label: Text(
+                      widget.submitting ? 'Verifying your set…' : 'Finish set',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
               ],
-            ),
-          ),
-          // Coaching cue banner — bottom-centre, N9 icon + text + colour.
-          Positioned(
-            left: RepRushTokens.spaceMd,
-            right: RepRushTokens.spaceMd,
-            bottom: 72,
-            child: _Banner(
-              color: bannerColor,
-              icon: bannerIcon,
-              text: _shownCue.cue,
             ),
           ),
         ],
@@ -705,7 +703,9 @@ class _Banner extends StatelessWidget {
         color: color.withValues(alpha: .82),
         borderRadius: BorderRadius.circular(RepRushTokens.cornerChip),
         border: Border.all(color: Colors.white.withValues(alpha: .24)),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: .35), blurRadius: 14)],
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: .35), blurRadius: 14),
+        ],
       ),
       child: Row(
         children: [

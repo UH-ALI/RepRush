@@ -8,17 +8,18 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reprush/app/shell_providers.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
-class SessionSummaryScreen extends StatelessWidget {
+class SessionSummaryScreen extends ConsumerWidget {
   const SessionSummaryScreen({
     super.key,
     required this.result,
     this.repCount,
     this.movementId,
-    this.onShowOnMap,
     this.onContinue,
   });
 
@@ -28,12 +29,10 @@ class SessionSummaryScreen extends StatelessWidget {
   final int? repCount;
   final String? movementId;
 
-  /// "See it on the map" — offered only when the set touched a hex.
-  final void Function(String h3)? onShowOnMap;
   final VoidCallback? onContinue;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final hex = result.hexResult;
     final title = hex == null
         ? 'Set complete'
@@ -109,13 +108,15 @@ class SessionSummaryScreen extends StatelessWidget {
             ),
           ],
           const SizedBox(height: RepRushTokens.spaceXl),
-          if (hex != null && onShowOnMap != null) ...[
+          if (hex != null) ...[
+            // The payoff: watch the hex change colour.
             BrandButton(
               label: 'See it on the map',
               icon: Icons.map,
               onPressed: () {
+                // Before the pop, while this widget's ref is still live.
+                showHexOnMap(ref, hex.h3);
                 Navigator.of(context).pop();
-                onShowOnMap!(hex.h3);
               },
             ),
             const SizedBox(height: RepRushTokens.spaceSm),

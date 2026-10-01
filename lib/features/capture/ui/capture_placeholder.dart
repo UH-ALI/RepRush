@@ -23,7 +23,7 @@ class CapturePlaceholder extends StatelessWidget {
                 const Icon(Icons.videocam_outlined, color: RepRushTokens.brand),
                 const SizedBox(width: RepRushTokens.spaceSm),
                 Text(
-                  'Your camera counts the reps',
+                  'How it works',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
@@ -39,13 +39,9 @@ class CapturePlaceholder extends StatelessWidget {
             ),
             const _Step(
               icon: Icons.repeat,
-              text: 'Train — every clean rep is counted, and tap Finish when '
+              text:
+                  'Train — every clean rep is counted, and tap Finish when '
                   'you are done.',
-            ),
-            const _Step(
-              icon: Icons.lock_outline,
-              text: 'Video never leaves your phone. Only rep measurements are '
-                  'sent.',
             ),
           ],
         ),

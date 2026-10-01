@@ -6,43 +6,89 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/app/app.dart';
+import 'package:reprush/app/onboarding.dart';
+import 'package:reprush/features/session/ui/session_summary_screen.dart';
+import 'package:reprush/models/models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// The map's "you are here" pulse loops forever by design, so `pumpAndSettle`
+/// would never return. Pump long enough for the stubs to resolve instead.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
 
 void main() {
+  // Every test but the intro's own starts as a returning athlete.
+  setUp(() {
+    SharedPreferences.setMockInitialValues({
+      OnboardingController.prefsKey: true,
+    });
+  });
+
+  testWidgets('first launch shows the intro, then the map', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+    await settle(tester);
+
+    expect(find.text('Train anywhere. Claim your ground.'), findsOneWidget);
+    expect(find.text('Territory'), findsNothing);
+
+    await tester.tap(find.text("Let's go"));
+    await settle(tester);
+    expect(find.text('Territory'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(OnboardingController.prefsKey), isTrue);
+  });
+
   testWidgets('app boots into the Map tab with all four destinations', (
     tester,
   ) async {
     await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+    await settle(tester);
 
     expect(find.text('Territory'), findsOneWidget);
-    for (final label in const ['Map', 'Workout', 'Profile', 'Challenges']) {
+    for (final label in const ['Map', 'Train', 'Compete', 'Profile']) {
       expect(find.text(label), findsOneWidget);
     }
 
-    // Stub territory loads: the legend is visible and labelled (N9).
-    await tester.pumpAndSettle();
-    expect(find.text('Yours'), findsOneWidget);
-    expect(find.text('Rival'), findsOneWidget);
-    expect(find.text('Unclaimed'), findsOneWidget);
+    // Stub territory loads: the legend is labelled (N9) and the bottom card
+    // offers to train for the hex the athlete is standing in.
+    await settle(tester);
+    expect(find.textContaining('Yours'), findsOneWidget);
+    expect(find.textContaining('Rival'), findsOneWidget);
+    expect(find.textContaining('Unclaimed'), findsOneWidget);
+    expect(
+      find.textContaining(
+        RegExp('Defend this hex|Take this hex|Claim this hex'),
+      ),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('Workout tab shows the session card and capture placeholder', (
+  testWidgets('Train tab offers only countable exercises and a start button', (
     tester,
   ) async {
     await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    await tester.tap(find.text('Workout'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.text('Train'));
+    await settle(tester);
 
-    expect(find.text('Ready to train'), findsOneWidget);
-    expect(find.text('Start squats'), findsOneWidget);
-    expect(find.text('Your camera counts the reps'), findsOneWidget);
-    // Only movements the camera can count are offered.
+    expect(find.text('Pick your exercise'), findsOneWidget);
     expect(find.text('Squat'), findsOneWidget);
     expect(find.text('Push-up'), findsOneWidget);
+    expect(find.text('Pull-up'), findsOneWidget);
     expect(find.text('Plank'), findsNothing);
-    // The seeded Riverside rig is nearby (stub spots); it sits below the
-    // fold, so scroll the screen's ListView into range first.
+    expect(find.text('Start squats'), findsOneWidget);
+
+    // Picking another exercise relabels the start button.
+    await tester.tap(find.text('Push-up'));
+    await settle(tester);
+    expect(find.text('Start push-ups'), findsOneWidget);
+
+    // The seeded Riverside rig is nearby (stub spots), below the fold.
     await tester.scrollUntilVisible(
       find.text('Riverside Calisthenics Rig'),
       200,
@@ -51,23 +97,103 @@ void main() {
     expect(find.text('Riverside Calisthenics Rig'), findsOneWidget);
   });
 
+  testWidgets('Compete tab shows the daily challenge and the leaderboard', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+    await settle(tester);
+
+    await tester.tap(find.text('Compete'));
+    await settle(tester);
+
+    expect(find.text('Daily challenge'), findsOneWidget);
+    // 20/50 in the stub: not claimable yet.
+    expect(find.text('Keep training'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('demo_athlete (you)'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('demo_athlete (you)'), findsOneWidget);
+  });
+
   testWidgets('Profile tab renders the stub profile through providers', (
     tester,
   ) async {
     await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     await tester.tap(find.text('Profile'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('demo_athlete'), findsOneWidget);
     expect(find.text('Level 3 · 540 XP'), findsOneWidget);
-    // The diary teaser sits below the fold in the ListView.
-    await tester.scrollUntilVisible(
-      find.text('Diary — coming in v2'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Diary — coming in v2'), findsOneWidget);
+    // Rank comes from the territory board (stub: 4th).
+    expect(find.text('#4'), findsOneWidget);
+  });
+
+  group('small phone (360×740)', () {
+    void usePhone(WidgetTester tester) {
+      tester.view.physicalSize = const Size(1080, 2220);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+    }
+
+    for (final tab in const ['Map', 'Train', 'Compete', 'Profile']) {
+      testWidgets('$tab renders without overflow', (tester) async {
+        usePhone(tester);
+        await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+        await settle(tester);
+        await tester.tap(find.text(tab));
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('intro renders without overflow', (tester) async {
+      usePhone(tester);
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+      await settle(tester);
+      expect(find.text("Let's go"), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('summary renders a contested result without overflow', (
+      tester,
+    ) async {
+      usePhone(tester);
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: SessionSummaryScreen(
+              repCount: 20,
+              movementId: 'push_up',
+              result: SubmitResult(
+                xp: 240,
+                level: 4,
+                levelUps: [4],
+                hexResult: HexResult(
+                  h3: '88195da49bfffff',
+                  captured: false,
+                  power: 1240,
+                  yourPower: 620,
+                ),
+                spotResult: null,
+                rankChange: null,
+                unlocks: [],
+                prs: [],
+                achievements: [],
+              ),
+            ),
+          ),
+        ),
+      );
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Power added'), findsOneWidget);
+      expect(find.text('Level up!'), findsOneWidget);
+      expect(find.text('See it on the map'), findsOneWidget);
+    });
   });
 }

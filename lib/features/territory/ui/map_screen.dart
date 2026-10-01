@@ -1,11 +1,14 @@
-/// Territory map with server-provided H3 polygons over OpenStreetMap tiles.
+/// Territory map with server-provided H3 polygons over OpenStreetMap tiles —
+/// the home screen, and the start of the loop: see your hex → train here →
+/// come back and watch it change colour.
 ///
 /// Location rules the map enforces in the UI (the server enforces them for
 /// real — territory always resolves from the session's recorded start fix):
 ///
-///   - the hex you are standing in is outlined and named in the status pill;
-///   - only that hex offers "Train here" — every other hex shows how far away
-///     it is instead of a button that could never pay out;
+///   - the hex you are standing in pulses, and the bottom card offers to train
+///     for it;
+///   - every other hex shows how far away it is instead of a button that could
+///     never pay out;
 ///   - the grid re-fetches around you once you walk out of the loaded area.
 ///
 /// Ownership: C (ui).
@@ -15,38 +18,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:reprush/app/shell_providers.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart' show DemoVenue;
 import 'package:reprush/core/location/geo.dart';
 import 'package:reprush/features/session/data/session_providers.dart';
+import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
-/// A one-shot request for the map to fly to a hex and select it — set by the
-/// post-set summary's "See it on the map", cleared by the map once handled.
-class MapFocusController extends Notifier<String?> {
-  @override
-  String? build() => null;
-
-  void focus(String h3) => state = h3;
-
-  void clear() => state = null;
-}
-
-final mapFocusProvider = NotifierProvider<MapFocusController, String?>(
-  MapFocusController.new,
-);
-
 const double _defaultZoom = 14.2;
 const double _focusZoom = 15.2;
 
 class MapScreen extends ConsumerWidget {
-  const MapScreen({required this.onOpenWorkout, super.key});
-
-  final Future<void> Function(HexCell cell) onOpenWorkout;
+  const MapScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -75,7 +63,6 @@ class MapScreen extends ConsumerWidget {
             cells: cells,
             spots: spots.value ?? const [],
             location: resolvedLocation,
-            onOpenWorkout: onOpenWorkout,
           ),
         ),
       ),
@@ -88,7 +75,6 @@ class _MapView extends ConsumerStatefulWidget {
     required this.cells,
     required this.spots,
     required this.location,
-    required this.onOpenWorkout,
   });
 
   final List<HexCell> cells;
@@ -97,37 +83,36 @@ class _MapView extends ConsumerStatefulWidget {
   /// The anchor the grid was fetched around — not necessarily where the
   /// athlete is now (that is [hereProvider]).
   final SessionLocation location;
-  final Future<void> Function(HexCell cell) onOpenWorkout;
 
   @override
   ConsumerState<_MapView> createState() => _MapViewState();
 }
 
 class _MapViewState extends ConsumerState<_MapView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  /// Drives the "you are here" marker and the current hex's outline.
   late final AnimationController _pulse = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  )..forward();
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  /// The one-shot flash on a hex the summary sent us to — the capture moment.
+  late final AnimationController _flash = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+  String? _flashHex;
+  String? _scheduledFocus;
+
   late final ValueNotifier<LayerHitResult<HexCell>?> _hitNotifier =
       ValueNotifier(null);
   final MapController _mapController = MapController();
   String? _selectedHex;
+  bool _starting = false;
 
   /// Set while a re-anchor fetch is in flight, so a stream of fixes beyond
   /// [reanchorDistanceM] triggers one refetch rather than one per fix.
   bool _reanchoring = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // A focus request can arrive while the map is still loading (the summary
-    // invalidates the grid and switches tabs in the same frame).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final pending = ref.read(mapFocusProvider);
-      if (pending != null) _focusHex(pending);
-    });
-  }
 
   @override
   void didUpdateWidget(_MapView oldWidget) {
@@ -138,6 +123,7 @@ class _MapViewState extends ConsumerState<_MapView>
   @override
   void dispose() {
     _pulse.dispose();
+    _flash.dispose();
     _hitNotifier.dispose();
     super.dispose();
   }
@@ -158,9 +144,15 @@ class _MapViewState extends ConsumerState<_MapView>
         ref.invalidate(territoryLocationProvider);
       }
     });
-    ref.listen<String?>(mapFocusProvider, (_, h3) {
-      if (h3 != null) _focusHex(h3);
-    });
+    // Watched, not listened: a request made while this tab was hidden (the
+    // summary sets it and switches tabs in one go) is still seen on return.
+    final focusRequest = ref.watch(mapFocusProvider);
+    if (focusRequest != null && focusRequest != _scheduledFocus) {
+      _scheduledFocus = focusRequest;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _focusHex(focusRequest),
+      );
+    }
 
     final here = ref.watch(hereProvider) ?? widget.location;
     final current = ref.watch(currentHexProvider);
@@ -171,7 +163,7 @@ class _MapViewState extends ConsumerState<_MapView>
 
     // Highlighted cells draw last so their outline is not painted over by a
     // neighbour's border.
-    int drawOrder(HexCell c) => c.h3 == _selectedHex
+    int drawOrder(HexCell c) => c.h3 == _selectedHex || c.h3 == _flashHex
         ? 2
         : c.h3 == current?.h3
         ? 1
@@ -196,11 +188,14 @@ class _MapViewState extends ConsumerState<_MapView>
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.repush.app',
             ),
-            PolygonLayer(
-              polygons: [
-                for (final cell in ordered) _polygonFor(cell, current),
-              ],
-              hitNotifier: _hitNotifier,
+            AnimatedBuilder(
+              animation: Listenable.merge([_pulse, _flash]),
+              builder: (context, _) => PolygonLayer(
+                polygons: [
+                  for (final cell in ordered) _polygonFor(cell, current),
+                ],
+                hitNotifier: _hitNotifier,
+              ),
             ),
             MarkerLayer(
               markers: [
@@ -239,43 +234,20 @@ class _MapViewState extends ConsumerState<_MapView>
           top: RepRushTokens.spaceMd,
           child: Row(
             children: [
-              _MapPill(
-                icon: Icons.hexagon,
-                text: '$yours OWNED',
-                color: RepRushTokens.brand,
-              ),
-              const Spacer(),
-              _CurrentHexPill(
-                current: current,
-                onTap: current == null ? null : () => _openSheet(current),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          left: RepRushTokens.spaceMd,
-          right: RepRushTokens.spaceMd,
-          bottom: RepRushTokens.spaceMd,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              const Text(
-                '© OpenStreetMap contributors',
-                style: TextStyle(color: Colors.white70, fontSize: 9),
-              ),
-              const SizedBox(height: 4),
-              GlassCard(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+              Flexible(
+                child: _MapPill(
+                  icon: Icons.hexagon,
+                  text: '$yours OWNED',
+                  color: Ownership.yours.color,
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _MapLegend(ownership: Ownership.yours, count: yours),
-                    _MapLegend(ownership: Ownership.rival, count: rivals),
-                    _MapLegend(ownership: Ownership.unclaimed, count: open),
-                  ],
+              ),
+              const SizedBox(width: RepRushTokens.spaceSm),
+              const Spacer(),
+              Flexible(
+                flex: 2,
+                child: _CurrentHexPill(
+                  current: current,
+                  onTap: current == null ? null : () => _openSheet(current),
                 ),
               ),
             ],
@@ -284,21 +256,58 @@ class _MapViewState extends ConsumerState<_MapView>
         Positioned(
           right: RepRushTokens.spaceMd,
           top: 68,
+          child: _MapControls(
+            onZoomIn: () => _mapController.move(
+              _mapController.camera.center,
+              _mapController.camera.zoom + .7,
+            ),
+            onZoomOut: () => _mapController.move(
+              _mapController.camera.center,
+              _mapController.camera.zoom - .7,
+            ),
+            onRecenter: () =>
+                _mapController.move(LatLng(here.lat, here.lng), _defaultZoom),
+          ),
+        ),
+        Positioned(
+          left: RepRushTokens.spaceSm,
+          right: RepRushTokens.spaceSm,
+          bottom: RepRushTokens.spaceSm,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _LeaderboardButton(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _LegendChip(ownership: Ownership.yours, count: yours),
+                        _LegendChip(ownership: Ownership.rival, count: rivals),
+                        _LegendChip(
+                          ownership: Ownership.unclaimed,
+                          count: open,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Text(
+                    '© OpenStreetMap',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 9,
+                      shadows: [Shadow(blurRadius: 3)],
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: RepRushTokens.spaceSm),
-              _MapControls(
-                onZoomIn: () => _mapController.move(
-                  _mapController.camera.center,
-                  _mapController.camera.zoom + .7,
-                ),
-                onZoomOut: () => _mapController.move(
-                  _mapController.camera.center,
-                  _mapController.camera.zoom - .7,
-                ),
-                onRecenter: () =>
-                    _mapController.move(LatLng(here.lat, here.lng), _defaultZoom),
+              _TrainHereCard(
+                current: current,
+                starting: _starting,
+                onTrain: current == null ? null : () => _train(current),
               ),
             ],
           ),
@@ -311,24 +320,29 @@ class _MapViewState extends ConsumerState<_MapView>
     final unclaimed = cell.ownerHandle == null && !cell.yours;
     final isCurrent = cell.h3 == current?.h3;
     final isSelected = cell.h3 == _selectedHex;
+    final base = Ownership.fromWire(
+      ownerHandle: cell.ownerHandle,
+      yours: cell.yours,
+    ).color.withValues(alpha: unclaimed ? .20 : .38);
+    // The flash fades from bright white back to the hex's (new) colour.
+    final flash = cell.h3 == _flashHex && _flash.isAnimating
+        ? 1 - Curves.easeOut.transform(_flash.value)
+        : 0.0;
     return Polygon<HexCell>(
       points: [for (final point in cell.polygon) LatLng(point.lat, point.lng)],
-      color: Ownership.fromWire(
-        ownerHandle: cell.ownerHandle,
-        yours: cell.yours,
-      ).color.withValues(alpha: unclaimed ? .20 : .38),
+      color: Color.lerp(base, Colors.white.withValues(alpha: .85), flash)!,
       borderColor: isSelected
           ? Colors.white
           : isCurrent
-          ? RepRushTokens.brand
-          : Colors.black.withValues(alpha: .78),
+          ? RepRushTokens.brand.withValues(alpha: .55 + _pulse.value * .45)
+          : Colors.black.withValues(alpha: .7),
       borderStrokeWidth: isSelected
           ? 4
           : isCurrent
-          ? 3.5
+          ? 2.5 + _pulse.value * 2
           : unclaimed
-          ? 1.2
-          : 1.8,
+          ? 1
+          : 1.6,
       hitValue: cell,
     );
   }
@@ -343,39 +357,19 @@ class _MapViewState extends ConsumerState<_MapView>
       spot.lng,
     ),
     width: 44,
-    height: 52,
+    height: 44,
     child: GestureDetector(
       onTap: () => _showSpot(spot),
-      child: Column(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: spot.verified
-                  ? RepRushTokens.electricViolet
-                  : RepRushTokens.surfaceRaised,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: RepRushTokens.cardShadow,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(7),
-              child: Icon(_spotIcon(spot.type), size: 18, color: Colors.white),
-            ),
-          ),
-          Flexible(
-            child: Text(
-              spot.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                shadows: [Shadow(blurRadius: 3)],
-              ),
-            ),
-          ),
-        ],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: spot.verified
+              ? RepRushTokens.electricViolet
+              : RepRushTokens.surfaceRaised,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: RepRushTokens.cardShadow,
+        ),
+        child: Icon(_spotIcon(spot.type), size: 20, color: Colors.white),
       ),
     ),
   );
@@ -394,18 +388,53 @@ class _MapViewState extends ConsumerState<_MapView>
       context: context,
       backgroundColor: RepRushTokens.surfaceDark,
       isScrollControlled: true,
-      builder: (_) =>
-          _HexSheet(cell: cell, onOpenWorkout: widget.onOpenWorkout),
+      builder: (_) => _HexSheet(cell: cell, onTrain: () => _train(cell)),
+    ).whenComplete(() {
+      if (mounted) setState(() => _selectedHex = null);
+    });
+  }
+
+  /// Exercise picker → session for [cell] → full-screen workout.
+  Future<void> _train(HexCell cell) async {
+    if (_starting) return;
+    if (ref.read(activeSessionProvider) != null) {
+      await startTraining(context, ref);
+      return;
+    }
+    final ownership = Ownership.fromWire(
+      ownerHandle: cell.ownerHandle,
+      yours: cell.yours,
+    );
+    await showTrainSheet(
+      context,
+      title: switch (ownership) {
+        Ownership.yours => 'Defend your hex',
+        Ownership.rival => "Take ${cell.ownerHandle}'s hex",
+        Ownership.unclaimed => 'Claim this hex',
+      },
+      subtitle: 'Pick an exercise. Every verified rep counts for this hex.',
+      onStart: () async {
+        if (!mounted) return;
+        setState(() => _starting = true);
+        try {
+          await startTraining(context, ref, targetH3: cell.h3);
+        } finally {
+          if (mounted) setState(() => _starting = false);
+        }
+      },
     );
   }
 
   void _focusHex(String h3) {
+    _scheduledFocus = null;
+    if (!mounted) return;
     ref.read(mapFocusProvider.notifier).clear();
     final cell = widget.cells.where((c) => c.h3 == h3).firstOrNull;
-    if (cell == null || !mounted) return;
+    if (cell == null) return;
     final centre = polygonCentre(cell.polygon);
-    setState(() => _selectedHex = h3);
     _mapController.move(LatLng(centre.lat, centre.lng), _focusZoom);
+    setState(() => _flashHex = h3);
+    _flash.forward(from: 0);
   }
 
   void _showSpot(SpotSummary spot) {
@@ -441,8 +470,64 @@ class _MapViewState extends ConsumerState<_MapView>
   };
 }
 
+/// The bottom call to action: where you are, and the button that starts a
+/// set for that hex.
+class _TrainHereCard extends ConsumerWidget {
+  const _TrainHereCard({
+    required this.current,
+    required this.starting,
+    required this.onTrain,
+  });
+
+  final HexCell? current;
+  final bool starting;
+  final VoidCallback? onTrain;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cell = current;
+    final inProgress = ref.watch(activeSessionProvider) != null;
+    final label = inProgress
+        ? 'Return to your set'
+        : cell == null
+        ? 'Finding your hex…'
+        : switch (Ownership.fromWire(
+            ownerHandle: cell.ownerHandle,
+            yours: cell.yours,
+          )) {
+            Ownership.yours => 'Defend this hex',
+            Ownership.rival => 'Take this hex',
+            Ownership.unclaimed => 'Claim this hex',
+          };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: RepRushTokens.chrome,
+        borderRadius: BorderRadius.circular(RepRushTokens.cornerCard),
+        border: Border.all(color: RepRushTokens.brand.withValues(alpha: .25)),
+        boxShadow: RepRushTokens.cardShadow,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(RepRushTokens.spaceSm + 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            HexStatusLine(cell: cell),
+            const SizedBox(height: RepRushTokens.spaceSm + 4),
+            BrandButton(
+              label: label,
+              icon: Icons.sports_gymnastics,
+              loading: starting,
+              onPressed: onTrain,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Top-right status: which kind of hex you are standing in. Tapping it opens
-/// that hex's sheet — the quickest route to "Train here".
+/// that hex's sheet.
 class _CurrentHexPill extends StatelessWidget {
   const _CurrentHexPill({required this.current, required this.onTap});
 
@@ -470,7 +555,11 @@ class _CurrentHexPill extends StatelessWidget {
     };
     return GestureDetector(
       onTap: onTap,
-      child: _MapPill(icon: Icons.my_location, text: text, color: ownership.color),
+      child: _MapPill(
+        icon: Icons.my_location,
+        text: text,
+        color: ownership.color,
+      ),
     );
   }
 }
@@ -489,8 +578,9 @@ class _MapControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .94),
+      color: RepRushTokens.chrome,
       borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: RepRushTokens.brand.withValues(alpha: .25)),
       boxShadow: RepRushTokens.cardShadow,
     ),
     child: Column(
@@ -498,21 +588,17 @@ class _MapControls extends StatelessWidget {
         IconButton(
           tooltip: 'Zoom in',
           onPressed: onZoomIn,
-          color: RepRushTokens.surfaceDark,
           icon: const Icon(Icons.add),
         ),
-        const Divider(height: 1),
         IconButton(
           tooltip: 'Recenter on me',
           onPressed: onRecenter,
-          color: RepRushTokens.brandDark,
+          color: RepRushTokens.brand,
           icon: const Icon(Icons.my_location),
         ),
-        const Divider(height: 1),
         IconButton(
           tooltip: 'Zoom out',
           onPressed: onZoomOut,
-          color: RepRushTokens.surfaceDark,
           icon: const Icon(Icons.remove),
         ),
       ],
@@ -523,10 +609,10 @@ class _MapControls extends StatelessWidget {
 /// The hex detail sheet. Only the hex the athlete is standing in can be
 /// trained for; any other hex explains how far away it is instead.
 class _HexSheet extends ConsumerWidget {
-  const _HexSheet({required this.cell, required this.onOpenWorkout});
+  const _HexSheet({required this.cell, required this.onTrain});
 
   final HexCell cell;
-  final Future<void> Function(HexCell cell) onOpenWorkout;
+  final VoidCallback onTrain;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -554,7 +640,7 @@ class _HexSheet extends ConsumerWidget {
         'Nobody holds this hex yet. One solid set here claims it.',
     };
     final actionLabel = sessionActive
-        ? 'Continue your set'
+        ? 'Return to your set'
         : switch (ownership) {
             Ownership.yours => 'Defend this hex',
             Ownership.rival => 'Take this hex',
@@ -615,9 +701,9 @@ class _HexSheet extends ConsumerWidget {
               BrandButton(
                 label: actionLabel,
                 icon: Icons.sports_gymnastics,
-                onPressed: () async {
+                onPressed: () {
                   Navigator.pop(context);
-                  await onOpenWorkout(cell);
+                  onTrain();
                 },
               )
             else ...[
@@ -663,30 +749,6 @@ class _HereBadge extends StatelessWidget {
   );
 }
 
-class _LeaderboardButton extends ConsumerWidget {
-  const _LeaderboardButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => IconButton(
-    tooltip: 'Leaderboard',
-    style: IconButton.styleFrom(
-      backgroundColor: const Color(0xDD0C1511),
-      foregroundColor: RepRushTokens.brand,
-    ),
-    icon: const Icon(Icons.leaderboard),
-    onPressed: () => showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: RepRushTokens.surfaceDark,
-      builder: (_) => const SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(RepRushTokens.spaceMd),
-          child: _LeaderboardList(),
-        ),
-      ),
-    ),
-  );
-}
-
 class _MapPill extends StatelessWidget {
   const _MapPill({required this.icon, required this.text, required this.color});
   final IconData icon;
@@ -696,7 +758,7 @@ class _MapPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: const Color(0xDD0C1511),
+      color: RepRushTokens.chrome,
       borderRadius: BorderRadius.circular(99),
       border: Border.all(color: color.withValues(alpha: .55)),
       boxShadow: RepRushTokens.cardShadow,
@@ -708,12 +770,18 @@ class _MapPill extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: RepRushTokens.displayFont,
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: .6,
+              ),
             ),
           ),
         ],
@@ -722,68 +790,31 @@ class _MapPill extends StatelessWidget {
   );
 }
 
-class _MapLegend extends StatelessWidget {
-  const _MapLegend({required this.ownership, required this.count});
+/// A compact legend entry — icon + label + count (N9: never colour alone).
+class _LegendChip extends StatelessWidget {
+  const _LegendChip({required this.ownership, required this.count});
   final Ownership ownership;
   final int count;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(ownership.icon, color: ownership.color, size: 16),
-      const SizedBox(width: 4),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: RepRushTokens.chrome,
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(ownership.icon, color: ownership.color, size: 12),
+          const SizedBox(width: 4),
           Text(
-            ownership.label,
+            '${ownership.label} $count',
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-          ),
-          Text(
-            '$count hexes',
-            style: const TextStyle(fontSize: 9, color: Colors.white70),
           ),
         ],
       ),
-    ],
+    ),
   );
-}
-
-class _LeaderboardList extends ConsumerWidget {
-  const _LeaderboardList();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final board = ref.watch(leaderboardProvider);
-    return board.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.all(RepRushTokens.spaceMd),
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (error, _) => ErrorView(
-        error: error,
-        onRetry: () => ref.invalidate(leaderboardProvider),
-      ),
-      data: (rows) => rows.isEmpty
-          ? const EmptyView(
-              message: 'No one holds territory yet. Be the first to claim a hex.',
-            )
-          : Card(
-              child: Column(
-                children: [
-                  for (final row in rows)
-                    ListTile(
-                      leading: Text('${row.rank}'),
-                      title: Text(row.handle),
-                      trailing: Text(
-                        '${row.hexesHeld} hexes · '
-                        '${row.areaKm2.toStringAsFixed(1)} km²',
-                      ),
-                    ),
-                ],
-              ),
-            ),
-    );
-  }
 }

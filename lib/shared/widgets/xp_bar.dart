@@ -15,24 +15,54 @@ class XpBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final intoLevel = xp % xpPerLevel;
     final progress = intoLevel / xpPerLevel;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text('LEVEL $level', style: RepRushTokens.bodyLabel.copyWith(color: RepRushTokens.brand)),
-        Text('${xpPerLevel - intoLevel} XP to level ${level + 1}', style: RepRushTokens.bodyLabel),
-      ]),
-      const SizedBox(height: 8),
-      TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0, end: progress),
-        duration: RepRushTokens.slow,
-        curve: Curves.easeOutCubic,
-        builder: (context, value, _) => ClipRRect(
-        borderRadius: BorderRadius.circular(99),
-        child: SizedBox(height: 10, child: Stack(children: [
-          const ColoredBox(color: Colors.white12),
-          FractionallySizedBox(widthFactor: value, child: const DecoratedBox(decoration: BoxDecoration(gradient: RepRushTokens.brandGradient))),
-        ])),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'LEVEL $level',
+              style: RepRushTokens.bodyLabel.copyWith(
+                color: RepRushTokens.brand,
+              ),
+            ),
+            const SizedBox(width: RepRushTokens.spaceSm),
+            Flexible(
+              child: Text(
+                '${xpPerLevel - intoLevel} XP to level ${level + 1}',
+                style: RepRushTokens.bodyLabel,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
-      ),
-    ]);
+        const SizedBox(height: 8),
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: progress),
+          duration: RepRushTokens.slow,
+          curve: Curves.easeOutCubic,
+          builder: (context, value, _) => ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: SizedBox(
+              height: 10,
+              child: Stack(
+                children: [
+                  const ColoredBox(color: Colors.white12),
+                  FractionallySizedBox(
+                    widthFactor: value,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RepRushTokens.brandGradient,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

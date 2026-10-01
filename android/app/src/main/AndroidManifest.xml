@@ -7,7 +7,7 @@
          only grants INTERNET in the debug/profile manifests. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="reprush"
+        android:label="RepRush"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -54,20 +54,41 @@ abstract final class RepRushTokens {
   static const Duration medium = Duration(milliseconds: 350);
   static const Duration slow = Duration(milliseconds: 700);
 
+  /// The bundled display face (pubspec `fonts:`) — numbers and headings only;
+  /// body copy stays on the platform font for legibility.
+  static const String displayFont = 'Rajdhani';
+
+  /// Floating chrome over the map and the bottom bar — one dark surface so
+  /// nothing reads as a different product.
+  static const Color chrome = Color(0xF0080C1A);
+
   static const TextStyle displayLarge = TextStyle(
-    fontSize: 36,
-    fontWeight: FontWeight.w800,
-    letterSpacing: -1.2,
+    fontFamily: displayFont,
+    fontSize: 44,
+    fontWeight: FontWeight.w700,
+    height: 1.05,
+  );
+
+  /// The rep counter — the biggest thing on the capture screen.
+  static const TextStyle heroNumber = TextStyle(
+    fontFamily: displayFont,
+    fontSize: 96,
+    fontWeight: FontWeight.w700,
+    height: 1,
+    color: Colors.white,
+    shadows: [Shadow(color: Color(0xAA000000), blurRadius: 16)],
   );
   static const TextStyle statNumber = TextStyle(
-    fontSize: 28,
-    fontWeight: FontWeight.w800,
-    letterSpacing: -0.8,
+    fontFamily: displayFont,
+    fontSize: 30,
+    fontWeight: FontWeight.w700,
+    height: 1.1,
   );
   static const TextStyle sectionTitle = TextStyle(
-    fontSize: 18,
+    fontFamily: displayFont,
+    fontSize: 21,
     fontWeight: FontWeight.w700,
-    letterSpacing: -0.2,
+    letterSpacing: 0.2,
   );
   static const TextStyle bodyLabel = TextStyle(
     fontSize: 12,
@@ -181,7 +202,7 @@ ThemeData buildRepRushTheme() {
       titleTextStyle: RepRushTokens.sectionTitle.copyWith(color: Color(0xFFF4F7FF)),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: const Color(0xEE0B1021),
+      backgroundColor: RepRushTokens.chrome,
       indicatorColor: RepRushTokens.brand.withValues(alpha: .18),
       labelTextStyle: const WidgetStatePropertyAll(
         TextStyle(fontWeight: FontWeight.w700),

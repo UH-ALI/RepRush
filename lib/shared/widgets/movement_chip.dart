@@ -4,7 +4,12 @@ import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/widgets/tier_badge.dart';
 
 class MovementChip extends StatelessWidget {
-  const MovementChip({super.key, required this.movement, required this.selected, required this.onTap});
+  const MovementChip({
+    super.key,
+    required this.movement,
+    required this.selected,
+    required this.onTap,
+  });
 
   final Movement movement;
   final bool selected;
@@ -26,41 +31,63 @@ class MovementChip extends StatelessWidget {
           width: 142,
           padding: const EdgeInsets.all(RepRushTokens.spaceSm),
           decoration: BoxDecoration(
-            gradient: selected ? RepRushTokens.brandGradient : RepRushTokens.surfaceGradient,
+            gradient: selected
+                ? RepRushTokens.brandGradient
+                : RepRushTokens.surfaceGradient,
             borderRadius: BorderRadius.circular(RepRushTokens.cornerCard),
-            border: Border.all(color: selected ? RepRushTokens.brand : Colors.white12, width: selected ? 1.5 : 1),
+            border: Border.all(
+              color: selected ? RepRushTokens.brand : Colors.white12,
+              width: selected ? 1.5 : 1,
+            ),
             boxShadow: selected ? RepRushTokens.brandGlow : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Icon(_iconFor(movement.family), color: selected ? Colors.white : RepRushTokens.brand),
-                if (!movement.unlocked) const Icon(Icons.lock, size: 16),
-              ]),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Icon(
+                    movementIcon(movement.family),
+                    color: selected ? Colors.white : RepRushTokens.brand,
+                  ),
+                  if (!movement.unlocked) const Icon(Icons.lock, size: 16),
+                ],
+              ),
               const Spacer(),
-              Text(movementDisplayName(movement.id), maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                movementDisplayName(movement.id),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 6),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                TierBadge(tier: movement.tier, locked: !movement.unlocked),
-                Text('×${movement.difficulty.toStringAsFixed(1)}', style: RepRushTokens.bodyLabel),
-              ]),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TierBadge(tier: movement.tier, locked: !movement.unlocked),
+                  Text(
+                    '×${movement.difficulty.toStringAsFixed(1)}',
+                    style: RepRushTokens.bodyLabel,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
   }
-
-  IconData _iconFor(MovementFamily family) => switch (family) {
-    MovementFamily.squat => Icons.accessibility_new,
-    MovementFamily.push => Icons.sports_gymnastics,
-    MovementFamily.pull => Icons.vertical_align_top,
-    MovementFamily.hold => Icons.timer_outlined,
-    MovementFamily.jump => Icons.north,
-  };
 }
+
+/// One icon per movement family, shared by every exercise picker.
+IconData movementIcon(MovementFamily family) => switch (family) {
+  MovementFamily.squat => Icons.accessibility_new,
+  MovementFamily.push => Icons.sports_gymnastics,
+  MovementFamily.pull => Icons.vertical_align_top,
+  MovementFamily.hold => Icons.timer_outlined,
+  MovementFamily.jump => Icons.north,
+};
 
 /// "push_up" → "Push-up", "archer_push_up" → "Archer push-up". The catalogue
 /// ids are snake_case wire values; athletes read hyphenated names.

@@ -61,6 +61,9 @@ dependencies:
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
   geolocator: ^14.1.1
+  # First-run intro flag. Already in the tree via supabase_flutter; listed
+  # directly because lib/app/onboarding.dart imports it.
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -91,6 +94,17 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Display face for numbers and headings (rep counter, XP, power, titles).
+  # Bundled rather than fetched at runtime so nothing depends on venue wifi.
+  # SIL Open Font License — see assets/fonts/Rajdhani-OFL.txt.
+  fonts:
+    - family: Rajdhani
+      fonts:
+        - asset: assets/fonts/Rajdhani-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Rajdhani-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
