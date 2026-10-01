@@ -12,6 +12,7 @@ import 'package:reprush/features/capture/pipeline/angle_math.dart';
 import 'package:reprush/features/capture/pipeline/calibration.dart';
 import 'package:reprush/features/capture/pipeline/ema_filter.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
+import 'package:reprush/features/capture/pipeline/idle_monitor.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
 import 'package:reprush/features/capture/pipeline/side_selector.dart';
@@ -36,6 +37,7 @@ class PipelineFrame {
     this.sideSwitched = false,
     this.lostStreak = 0,
     this.calibrationRejection,
+    this.idle = IdleStatus.active,
   });
 
   final int repCount;
@@ -76,6 +78,10 @@ class PipelineFrame {
   /// Why the last calibration attempt was rejected — drives the retry
   /// messaging while samples re-collect. Null after an accepted attempt.
   final CalibrationRejectionReason? calibrationRejection;
+
+  /// Set-idle state: warning countdown (3, 2, 1) then expired. The
+  /// controller saves the set on expiry. Always active while calibrating.
+  final IdleStatus idle;
 }
 
 /// Two-phase pipeline: CALIBRATING (collect rest samples) then COUNTING.
@@ -96,6 +102,7 @@ class RepPipeline {
   final EmaFilter _ema = EmaFilter();
   final CalibrationCapture _calibration;
   final FeedbackDebouncer _debouncer = FeedbackDebouncer();
+  final SetIdleMonitor _idle = SetIdleMonitor();
 
   RepMachine? _machine;
   bool _calibrating = true;
@@ -151,6 +158,15 @@ class RepPipeline {
           ? machine.tickLost()
           : null;
       final lost = _lostStreak >= _lostAfterFrames;
+      // Lost frames still advance the idle clock: an athlete who walked
+      // out of frame is idle.
+      final idle = _calibrating || machine == null
+          ? IdleStatus.active
+          : _idle.tick(
+              phase: result?.phase ?? RepPhase.rest,
+              repCount: result?.repCount ?? repCount,
+              timestampMs: frame.timestampMs,
+            );
       final feedback = lost
           ? FeedbackSnapshot(
               level: FeedbackLevel.red,
@@ -185,6 +201,7 @@ class RepPipeline {
         rightVisibility: vis.right,
         lostStreak: _lostStreak,
         calibrationRejection: _lastRejection,
+        idle: idle,
       );
     }
 
@@ -209,12 +226,7 @@ class RepPipeline {
       final oppositeSide = side == 'left' ? 'right' : 'left';
       final oppositeShoulder = frame.landmarks['${oppositeSide}Shoulder'];
       final torsoLen = (shoulder != null && hip != null)
-          ? _pointDistancePx(
-              shoulder,
-              hip,
-              frame.imageWidth,
-              frame.imageHeight,
-            )
+          ? _pointDistancePx(shoulder, hip, frame.imageWidth, frame.imageHeight)
           : null;
       final shoulderW = (shoulder != null && oppositeShoulder != null)
           ? _pointDistancePx(
@@ -259,6 +271,11 @@ class RepPipeline {
       selected.minVisibility,
       frame.timestampMs,
     );
+    final idle = _idle.tick(
+      phase: result.phase,
+      repCount: result.repCount,
+      timestampMs: frame.timestampMs,
+    );
     final feedback = _debouncer.update(
       evaluateFeedback(
         phase: result.phase,
@@ -285,6 +302,7 @@ class RepPipeline {
       sideSwitched: sideSwitched,
       lostStreak: _lostStreak,
       calibrationRejection: _lastRejection,
+      idle: idle,
     );
   }
 
@@ -324,6 +342,7 @@ class RepPipeline {
     _ema.reset();
     _calibration.reset();
     _debouncer.reset();
+    _idle.reset();
     _lostStreak = 0;
     _currentSide = null;
     _calibrationResult = null;
