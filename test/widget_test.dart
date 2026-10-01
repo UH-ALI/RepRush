@@ -34,9 +34,13 @@ void main() {
     await tester.tap(find.text('Workout'));
     await tester.pumpAndSettle();
 
-    expect(find.text('No active session'), findsOneWidget);
-    expect(find.text('Start session'), findsOneWidget);
-    expect(find.text('Camera counter'), findsOneWidget);
+    expect(find.text('Ready to train'), findsOneWidget);
+    expect(find.text('Start squats'), findsOneWidget);
+    expect(find.text('Your camera counts the reps'), findsOneWidget);
+    // Only movements the camera can count are offered.
+    expect(find.text('Squat'), findsOneWidget);
+    expect(find.text('Push-up'), findsOneWidget);
+    expect(find.text('Plank'), findsNothing);
     // The seeded Riverside rig is nearby (stub spots); it sits below the
     // fold, so scroll the screen's ListView into range first.
     await tester.scrollUntilVisible(

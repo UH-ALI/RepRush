@@ -2,8 +2,9 @@
 ///
 /// Ownership: B.
 ///
-/// ONLY ROUTES THAT EXIST ARE LIVE. Four endpoint areas are implemented
-/// (`session-start`, `session-submit`, `movements`, `territory`), so this file
+/// ONLY ROUTES THAT EXIST ARE LIVE. Six endpoint areas are implemented
+/// (`session-start`, `session-submit`, `movements`, `territory`, `me`,
+/// `challenges`), so this file
 /// implements exactly those and delegates everything else to a stub. That mirrors
 /// the server's own `LIVE_ENDPOINTS` mechanism, which puts one route on the live
 /// path at a time so a regression is a rollback in seconds rather than a rewrite.
@@ -60,27 +61,21 @@ class LiveSessionRepository implements SessionRepository {
   }
 }
 
-/// `GET /movements` is live; `GET /me` has no route yet.
-///
-/// Split per method rather than per repository so the Profile screen keeps showing
-/// realistic data while the exercise picker shows the real seeded catalogue — the
-/// same reasoning as the file header, applied one level finer.
+/// `GET /me` and `GET /movements` — both deployed, both always live.
 class LiveProgressionRepository implements ProgressionRepository {
-  const LiveProgressionRepository({
-    required this.transport,
-    required this.fallback,
-  });
+  const LiveProgressionRepository({required this.transport});
 
   /// Public for the same reason as [LiveSessionRepository.transport].
   final ApiTransport transport;
 
-  /// The stub, used for every method with no deployed route. Passed in rather than
-  /// constructed here so the provider decides which stub — and so a test can hand
-  /// in one it can assert against.
-  final ProgressionRepository fallback;
-
+  /// The athlete's real handle, level and XP. XP is round(lifetime RepScore) +
+  /// claimed challenge XP — the same total session-submit levels against, so the
+  /// profile and the post-set summary can never show different levels.
   @override
-  Future<UserProfile> me() => fallback.me();
+  Future<UserProfile> me() async {
+    final body = await transport.get('me');
+    return UserProfile.fromJson(body);
+  }
 
   /// The catalogue plus this athlete's per-user state. Rows arrive sorted by family
   /// then tier, `difficulty` reaches the wire as a bare number (`1`, not `1.0`) for
@@ -137,5 +132,33 @@ class LiveTerritoryRepository implements TerritoryRepository {
   Future<List<LeaderboardRow>> leaderboard() async {
     final body = await transport.get('territory/leaderboard');
     return LeaderboardRow.listFromJson(body);
+  }
+}
+
+/// `GET /challenges/daily`, `POST /challenges/daily/claim` — one deployed
+/// `challenges` function, dispatched on the path tail like `territory`.
+class LiveChallengesRepository implements ChallengesRepository {
+  const LiveChallengesRepository({required this.transport});
+
+  /// Public for the same reason as [LiveSessionRepository.transport].
+  final ApiTransport transport;
+
+  /// Progress is computed server-side from verified sets submitted today (UTC);
+  /// nothing the client counted locally contributes to it.
+  @override
+  Future<DailyChallenge> daily() async {
+    final body = await transport.get('challenges/daily');
+    return DailyChallenge.fromJson(body);
+  }
+
+  /// Throws `NOT_COMPLETE` / `ALREADY_CLAIMED` as [ApiException], exactly as the
+  /// stub does, so the screen handles both backends identically.
+  @override
+  Future<ChallengeClaim> claimDaily() async {
+    final body = await transport.post(
+      'challenges/daily/claim',
+      const <String, Object?>{},
+    );
+    return ChallengeClaim.fromJson(body);
   }
 }

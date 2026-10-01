@@ -28,7 +28,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/core/api/backend_config.dart';
 import 'package:reprush/core/api/live/api_transport.dart';
 import 'package:reprush/core/api/live/live_repositories.dart';
-import 'package:reprush/core/api/stub/stub_repositories.dart';
 import 'package:reprush/models/models.dart';
 
 // ---------------------------------------------------------------------------
@@ -166,6 +165,18 @@ const _leaderboardJson =
 // ---------------------------------------------------------------------------
 // The fake transport
 // ---------------------------------------------------------------------------
+
+/// `GET /me` as the route builds it: xp = round(lifetime RepScore) + claimed
+/// challenge XP (here 162 + 150), level from the 250-XP placeholder curve.
+const _meJson =
+    '{"handle":"athlete_3f9a1c","avatarUrl":null,"level":2,"xp":312,'
+    '"lifetimeRepScore":162.4,"homeSpotId":null,'
+    '"unlockedTiers":["plank","pull_up","push_up","squat"]}';
+
+/// `GET /challenges/daily` with REPRUSH_DAILY_TARGET at its default of 30.
+const _dailyJson =
+    '{"templateId":"daily-2026-10-03","description":"30 squats today",'
+    '"target":30,"progress":12,"claimed":false}';
 
 /// One recorded call. [verb] is here because "which HTTP method did the repository
 /// ask for" is a real failure mode: `FunctionsClient.invoke` defaults to POST and
@@ -407,10 +418,7 @@ void main() {
         respond: (_) => jsonDecode(_movementsJson),
       );
 
-      await LiveProgressionRepository(
-        transport: transport,
-        fallback: StubProgressionRepository(),
-      ).movements();
+      await LiveProgressionRepository(transport: transport).movements();
 
       expect(transport.only.verb, 'GET');
       expect(transport.only.function, 'movements');
@@ -424,7 +432,6 @@ void main() {
 
       final movements = await LiveProgressionRepository(
         transport: transport,
-        fallback: StubProgressionRepository(),
       ).movements();
 
       expect(movements, hasLength(18));
@@ -467,7 +474,6 @@ void main() {
       final transport = _FakeTransport(respond: (_) => raw);
       final movements = await LiveProgressionRepository(
         transport: transport,
-        fallback: StubProgressionRepository(),
       ).movements();
 
       double difficultyOf(String id) =>
@@ -488,7 +494,6 @@ void main() {
 
         final movements = await LiveProgressionRepository(
           transport: transport,
-          fallback: StubProgressionRepository(),
         ).movements();
         final squat = movements.firstWhere((m) => m.id == 'squat');
 
@@ -536,24 +541,86 @@ void main() {
   });
 
   group('LiveProgressionRepository.me', () {
-    test('delegates to the fallback and never reaches the network', () async {
-      // `GET /me` has no deployed route. Splitting per method keeps the Profile
-      // screen on realistic stub data instead of a 404.
-      final transport = _FakeTransport(
-        respond: (_) => fail('me() must not call the transport'),
-      );
-      final stub = StubProgressionRepository();
+    test('GETs the deployed me function and reads the profile', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_meJson));
 
       final profile = await LiveProgressionRepository(
         transport: transport,
-        fallback: stub,
       ).me();
 
-      expect(transport.calls, isEmpty);
-      expect(profile.handle, 'demo_athlete');
-      // The stub returns a `const UserProfile`, so identity proves this is a real
-      // pass-through and not a copy that happens to look correct.
-      expect(profile, same(await stub.me()));
+      expect(transport.only.verb, 'GET');
+      expect(transport.only.function, 'me');
+      expect(profile.handle, 'athlete_3f9a1c');
+      expect(profile.level, 2);
+      expect(profile.xp, 312);
+      // lifetimeRepScore is a ledger sum and arrives fractional; xp is rounded.
+      expect(profile.lifetimeRepScore, closeTo(162.4, 1e-9));
+      expect(profile.homeSpotId, isNull);
+      expect(profile.unlockedTiers, contains('squat'));
+    });
+
+    test('round-trips: fromJson(x).toJson() == x', () {
+      final json = jsonDecode(_meJson) as Map<String, Object?>;
+      expect(UserProfile.fromJson(json).toJson(), json);
+    });
+  });
+
+  group('LiveChallengesRepository', () {
+    test('daily GETs challenges/daily as a path, not a query', () async {
+      final transport = _FakeTransport(respond: (_) => jsonDecode(_dailyJson));
+
+      final daily = await LiveChallengesRepository(
+        transport: transport,
+      ).daily();
+
+      expect(transport.only.verb, 'GET');
+      expect(transport.only.function, 'challenges/daily');
+      expect(daily.description, '30 squats today');
+      expect(daily.progress, 12);
+      expect(daily.target, 30);
+      expect(daily.complete, isFalse);
+      expect(daily.claimed, isFalse);
+    });
+
+    test('claim POSTs to challenges/daily/claim and reads the award', () async {
+      final transport = _FakeTransport(
+        respond: (_) => <String, Object?>{'claimed': true, 'xpAwarded': 150},
+      );
+
+      final claim = await LiveChallengesRepository(
+        transport: transport,
+      ).claimDaily();
+
+      expect(transport.only.verb, 'POST');
+      expect(transport.only.function, 'challenges/daily/claim');
+      expect(claim.claimed, isTrue);
+      expect(claim.xpAwarded, 150);
+    });
+
+    test('NOT_COMPLETE reaches the caller with its code', () async {
+      final transport = _FakeTransport(
+        failWith: (_) => const ApiException(
+          code: ApiErrorCode.notComplete,
+          message: 'Challenge not complete: 12/30.',
+          statusCode: 409,
+        ),
+      );
+
+      await expectLater(
+        LiveChallengesRepository(transport: transport).claimDaily(),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            ApiErrorCode.notComplete,
+          ),
+        ),
+      );
+    });
+
+    test('round-trips: fromJson(x).toJson() == x', () {
+      final json = jsonDecode(_dailyJson) as Map<String, Object?>;
+      expect(DailyChallenge.fromJson(json).toJson(), json);
     });
   });
 

@@ -25,13 +25,31 @@ import 'package:reprush/features/capture/ui/debug_panel.dart';
 import 'package:reprush/features/capture/ui/skeleton_overlay.dart';
 import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/errors.dart';
 
 class CapturePreviewScreen extends ConsumerStatefulWidget {
-  const CapturePreviewScreen({super.key, required this.config});
+  const CapturePreviewScreen({
+    super.key,
+    required this.config,
+    this.active = true,
+    this.onSubmitted,
+  });
 
   /// The movement to count reps for. Supplied by WorkoutScreen (Seam 3)
   /// so the correct pipeline is started without duplicating selection logic.
+  /// Changing it needs a new widget (key it by movement): the pipeline is
+  /// started once, in initState.
   final MovementConfig config;
+
+  /// False while the hosting tab is off-screen. The camera pauses — the set
+  /// in progress is kept — and resumes when the tab is shown again.
+  final bool active;
+
+  /// Called once the server has scored the set, with the reps the HUD counted
+  /// (display only — the score comes from [SubmitResult]). The session is
+  /// consumed by then, which unmounts this widget, so the host — not this
+  /// widget — shows what happens next.
+  final void Function(SubmitResult result, int repCount)? onSubmitted;
 
   @override
   ConsumerState<CapturePreviewScreen> createState() =>
@@ -62,8 +80,21 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _controller.startSession(widget.config);
-      unawaited(_controller.start());
+      unawaited(
+        _controller.start().then((_) {
+          // Mounted while hidden (a session started from the map mounts this
+          // a frame before the tab switch): open the camera, then park it.
+          if (mounted && !widget.active) unawaited(_controller.pause());
+        }),
+      );
     });
+  }
+
+  @override
+  void didUpdateWidget(CapturePreviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active == widget.active) return;
+    unawaited(widget.active ? _controller.resume() : _controller.pause());
   }
 
   @override
@@ -78,7 +109,8 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
           AppLifecycleState.detached:
         unawaited(_controller.pause());
       case AppLifecycleState.resumed:
-        unawaited(_controller.resume());
+        // Returning to the app on another tab must not reopen the camera.
+        if (widget.active) unawaited(_controller.resume());
     }
   }
 
@@ -116,6 +148,11 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
       });
       return;
     }
+    // Captured up front: a successful submit consumes the session, which
+    // unmounts this widget before the code below the await runs to the end.
+    final onSubmitted = widget.onSubmitted;
+    final messenger = ScaffoldMessenger.of(context);
+    final repCount = ref.read(pipelineFramesProvider).value?.repCount ?? 0;
     setState(() => _submitting = true);
     debugPrint('[Evidence-Diag] >>> calling CaptureController.finishSet()');
     final evidence = _controller.finishSet(
@@ -128,7 +165,10 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
       final diag = _controller.lastFinishDiagnostic;
       setState(() {
         _submitting = false;
-        _submitMessage = diag.isNotEmpty ? diag : 'Evidence incomplete.';
+        _submitMessage = kDebugMode && diag.isNotEmpty
+            ? diag
+            : 'Not enough of that set was captured to verify it. Keep your '
+                  'whole body in frame and do at least one full rep.';
         _submitSucceeded = false;
       });
       return;
@@ -137,23 +177,33 @@ class _CapturePreviewScreenState extends ConsumerState<CapturePreviewScreen>
       final result = await ref
           .read(activeSessionProvider.notifier)
           .submit(evidence);
+      // The host shows the summary; it outlives this widget.
+      onSubmitted?.call(result, repCount);
       // Success: tear down the capture session. The one-shot is
       // consumed server-side.
       await _controller.stop();
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _submitMessage =
-            '+${result.xp} XP — ${result.achievements.join(", ")}';
+        _submitMessage = '+${result.xp} XP';
         _submitSucceeded = true;
       });
     } on ApiException catch (e) {
-      // Failure: the session is preserved for retry (server does
-      // not consume on reject). Show the contract error.
+      if (endsSession(e)) {
+        // The server will never accept this session now (expired, already
+        // used, timeline rejected…). Drop it so the athlete can start fresh;
+        // that unmounts this view, so the reason goes in a snackbar.
+        messenger.showSnackBar(SnackBar(content: Text(describeError(e))));
+        ref.read(activeSessionProvider.notifier).abandon();
+        return;
+      }
+      // Anything else (a network blip, a server hiccup) leaves the one-shot
+      // unconsumed — the server does not consume on reject — so Finish can
+      // simply be pressed again.
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _submitMessage = '${e.code}: ${e.message}';
+        _submitMessage = describeError(e);
         _submitSucceeded = false;
       });
     }
@@ -245,14 +295,15 @@ class _PreviewStack extends ConsumerWidget {
           builder: (context, frame, _) =>
               CustomPaint(painter: SkeletonOverlay(frame: frame)),
         ),
-        Positioned(
-          top: RepRushTokens.spaceSm,
-          left: RepRushTokens.spaceSm,
-          child: Chip(
-            avatar: const Icon(Icons.speed, size: 18),
-            label: Text('${status.fps} fps'),
+        if (kDebugMode)
+          Positioned(
+            top: RepRushTokens.spaceSm,
+            left: RepRushTokens.spaceSm,
+            child: Chip(
+              avatar: const Icon(Icons.speed, size: 18),
+              label: Text('${status.fps} fps'),
+            ),
           ),
-        ),
         Positioned(
           top: RepRushTokens.spaceSm,
           right: RepRushTokens.spaceSm,

@@ -10,13 +10,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
-import 'package:reprush/core/location/location.dart';
 import 'package:reprush/features/challenges/ui/challenges_screen.dart';
 import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/features/session/ui/workout_screen.dart';
 import 'package:reprush/features/territory/ui/map_screen.dart';
 import 'package:reprush/features/progression/ui/profile_screen.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/errors.dart';
 
 class RepRushApp extends StatelessWidget {
   const RepRushApp({super.key});
@@ -75,7 +75,10 @@ class _AppShellState extends ConsumerState<AppShell> {
         index: _index,
         children: [
           MapScreen(onOpenWorkout: _openWorkout),
-          const WorkoutScreen(),
+          // IndexedStack keeps the workout tab mounted while hidden, so it is
+          // told when it is off-screen and pauses the camera instead of
+          // streaming frames nobody can see.
+          WorkoutScreen(visible: _index == 1, onShowOnMap: _showOnMap),
           const ProfileScreen(),
           const ChallengesScreen(),
         ],
@@ -104,52 +107,38 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
+  /// "Train here" from the map's hex sheet. The location gate lives in
+  /// [ActiveSessionController.startHere] — shared with the workout tab — so
+  /// both entry points refuse a hex the athlete is not standing in.
   Future<void> _openWorkout(HexCell cell) async {
     if (_openingWorkout) return;
-    if (ref.read(activeSessionProvider) != null) return;
+    // A set already in progress lives on the workout tab; go back to it.
+    if (ref.read(activeSessionProvider) != null) {
+      setState(() => _index = 1);
+      return;
+    }
 
     setState(() => _openingWorkout = true);
     try {
-      final location = await readSessionLocation();
-      if (!_contains(cell.polygon, location.lat, location.lng)) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You must be physically inside this hex to train.'),
-          ),
-        );
-        return;
-      }
-      await ref.read(activeSessionProvider.notifier).start(location: location);
+      await ref
+          .read(activeSessionProvider.notifier)
+          .startHere(targetH3: cell.h3);
       if (!mounted) return;
       setState(() => _index = 1);
-    } on LocationException catch (error) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${error.code}: ${error.message}')),
-      );
+      ).showSnackBar(SnackBar(content: Text(describeError(error))));
     } finally {
       if (mounted) setState(() => _openingWorkout = false);
     }
   }
 
-  bool _contains(List<GeoPoint> polygon, double lat, double lng) {
-    var inside = false;
-    for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      final a = polygon[i];
-      final b = polygon[j];
-      final crosses = (a.lng > lng) != (b.lng > lng);
-      if (crosses &&
-          lat < (b.lat - a.lat) * (lng - a.lng) / (b.lng - a.lng) + a.lat) {
-        inside = !inside;
-      }
-    }
-    return inside;
+  /// "See it on the map" from the post-set summary.
+  void _showOnMap(String h3) {
+    setState(() => _index = 0);
+    ref.read(mapFocusProvider.notifier).focus(h3);
   }
 }
 

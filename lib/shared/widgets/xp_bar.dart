@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 
+/// XP per level — must match `XP_PER_LEVEL` in
+/// `supabase/functions/_shared/stubs/consequences.ts`, the server's placeholder
+/// curve, or the bar fills on a different cycle from the level number above it.
+const int xpPerLevel = 250;
+
 class XpBar extends StatelessWidget {
   const XpBar({super.key, required this.xp, required this.level});
   final int xp;
@@ -8,11 +13,12 @@ class XpBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = (xp % 1000) / 1000;
+    final intoLevel = xp % xpPerLevel;
+    final progress = intoLevel / xpPerLevel;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text('LEVEL $level', style: RepRushTokens.bodyLabel.copyWith(color: RepRushTokens.brand)),
-        Text('$xp XP', style: RepRushTokens.bodyLabel),
+        Text('${xpPerLevel - intoLevel} XP to level ${level + 1}', style: RepRushTokens.bodyLabel),
       ]),
       const SizedBox(height: 8),
       TweenAnimationBuilder<double>(

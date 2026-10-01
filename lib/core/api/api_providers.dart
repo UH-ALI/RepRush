@@ -41,16 +41,20 @@ final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
       : LiveSessionRepository(transport: transport);
 });
 
-/// Split PER METHOD, not per repository: `GET /movements` is deployed, `GET /me`
-/// is not. `LiveProgressionRepository` delegates `me()` to the stub handed to it,
-/// so the Profile screen keeps showing realistic data while the exercise picker
-/// shows the real seeded catalogue.
+/// Live whole: `GET /me` and `GET /movements` are both deployed.
 final progressionRepositoryProvider = Provider<ProgressionRepository>((ref) {
-  const fallback = StubProgressionRepository();
   final transport = ref.watch(apiTransportProvider);
   return transport == null
-      ? fallback
-      : LiveProgressionRepository(transport: transport, fallback: fallback);
+      ? const StubProgressionRepository()
+      : LiveProgressionRepository(transport: transport);
+});
+
+/// Live whole: both challenge routes ship in the one `challenges` function.
+final challengesRepositoryProvider = Provider<ChallengesRepository>((ref) {
+  final transport = ref.watch(apiTransportProvider);
+  return transport == null
+      ? StubChallengesRepository()
+      : LiveChallengesRepository(transport: transport);
 });
 
 /// Live whole, not per method: all three `territory` routes ship together in one
@@ -78,10 +82,6 @@ final territoryRepositoryProvider = Provider<TerritoryRepository>((ref) {
 
 final spotsRepositoryProvider = Provider<SpotsRepository>(
   (ref) => const StubSpotsRepository(),
-);
-
-final challengesRepositoryProvider = Provider<ChallengesRepository>(
-  (ref) => StubChallengesRepository(),
 );
 
 final deviceAttestationRepositoryProvider =

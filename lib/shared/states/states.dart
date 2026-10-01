@@ -3,9 +3,11 @@
 /// Ownership: C.
 library;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/errors.dart';
 
 class LoadingView extends StatelessWidget {
   const LoadingView({super.key});
@@ -60,11 +62,6 @@ class ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final api = error is ApiException ? error as ApiException : null;
-    final message =
-        api?.message ??
-        (error is StateError
-            ? error.toString().replaceFirst('Bad state: ', '')
-            : error.toString());
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceLg),
@@ -73,8 +70,10 @@ class ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline),
             const SizedBox(height: RepRushTokens.spaceSm),
-            Text(message, textAlign: TextAlign.center),
-            if (api != null) ...[
+            Text(describeError(error), textAlign: TextAlign.center),
+            // The contract code helps a developer at the venue; an athlete
+            // never needs it.
+            if (api != null && kDebugMode) ...[
               const SizedBox(height: RepRushTokens.spaceXs),
               Text(
                 'code: ${api.code}',
@@ -85,7 +84,7 @@ class ErrorView extends StatelessWidget {
               const SizedBox(height: RepRushTokens.spaceMd),
               FilledButton.tonal(
                 onPressed: onRetry,
-                child: const Text('Retry'),
+                child: const Text('Try again'),
               ),
             ],
           ],

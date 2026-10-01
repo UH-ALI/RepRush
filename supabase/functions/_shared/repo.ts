@@ -485,6 +485,101 @@ export async function loadHandles(
   return handles;
 }
 
+// ---------------------------------------------------------------------------
+// Profile and daily challenge (GET /me, /challenges/daily — migration 0008)
+// ---------------------------------------------------------------------------
+
+export interface ProfileRow {
+  handle: string;
+  avatarUrl: string | null;
+}
+
+/**
+ * The caller's profile row. The signup trigger (0001) creates it with the auth
+ * user, so a missing row is a broken account, not an empty state — a 500 naming
+ * the cause beats rendering a nameless profile.
+ */
+export async function loadProfile(client: Db, userId: string): Promise<ProfileRow> {
+  const { data, error } = await client
+    .from("profiles")
+    .select("handle, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) failDb("reading the profile", error);
+  if (data === null) {
+    throw new HttpError(ErrorCode.INTERNAL, 500, "No profile row for this account.");
+  }
+  return { handle: data.handle as string, avatarUrl: (data.avatar_url as string | null) ?? null };
+}
+
+/**
+ * XP banked from claimed challenges — added on top of lifetime RepScore for the
+ * level curve, and never read by anything that resolves territory (structural
+ * rule 4: missions award XP only).
+ */
+export async function challengeXp(client: Db, userId: string): Promise<number> {
+  const { data, error } = await client
+    .from("challenge_claims")
+    .select("xp_awarded")
+    .eq("user_id", userId);
+  if (error) failDb("reading challenge XP", error);
+  const rows = (data ?? []) as { xp_awarded: number | string }[];
+  return rows.reduce((sum, row) => sum + num(row.xp_awarded, "xp_awarded"), 0);
+}
+
+/**
+ * Verified reps of one movement on one UTC day, through the
+ * `user_daily_movement_reps` view — scored sets in submitted sessions only, so a
+ * voided session stops counting with no correction step.
+ */
+export async function dailyMovementReps(
+  client: Db,
+  userId: string,
+  movementId: string,
+  day: string,
+): Promise<number> {
+  const { data, error } = await client
+    .from("user_daily_movement_reps")
+    .select("reps")
+    .eq("user_id", userId)
+    .eq("movement_id", movementId)
+    .eq("day", day)
+    .maybeSingle();
+  if (error) failDb("reading today's reps", error);
+  return data === null ? 0 : num(data.reps, "reps");
+}
+
+export async function hasClaimed(client: Db, userId: string, templateId: string): Promise<boolean> {
+  const { data, error } = await client
+    .from("challenge_claims")
+    .select("template_id")
+    .eq("user_id", userId)
+    .eq("template_id", templateId)
+    .maybeSingle();
+  if (error) failDb("reading the challenge claim", error);
+  return data !== null;
+}
+
+/**
+ * Records a claim. Returns false when the (user, template) row already exists —
+ * the primary key is the double-claim guard, so a race between two claim taps
+ * resolves in Postgres and the loser is reported as ALREADY_CLAIMED, not a 500.
+ */
+export async function insertClaim(
+  client: Db,
+  input: { userId: string; templateId: string; xp: number },
+): Promise<boolean> {
+  const { error } = await client.from("challenge_claims").insert({
+    user_id: input.userId,
+    template_id: input.templateId,
+    xp_awarded: input.xp,
+  });
+  // 23505 = unique_violation.
+  if (error && (error as { code?: string }).code === "23505") return false;
+  if (error) failDb("recording the challenge claim", error);
+  return true;
+}
+
 export interface FlipView {
   handle: string;
   atMs: number;

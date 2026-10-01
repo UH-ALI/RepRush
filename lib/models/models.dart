@@ -851,6 +851,35 @@ class UserProfile {
   final double lifetimeRepScore;
   final String? homeSpotId;
   final List<String> unlockedTiers;
+
+  /// Reads `GET /me`. `xp` is round(lifetime RepScore) + claimed challenge XP —
+  /// the same number session-submit levels against — so it is whole by
+  /// construction and `_asInt` rejecting a fraction would be a real server bug.
+  factory UserProfile.fromJson(Object? json) {
+    final map = _asMap(json, 'me');
+    return UserProfile(
+      handle: _asString(map['handle'], 'me.handle'),
+      avatarUrl: _asStringOrNull(map['avatarUrl'], 'me.avatarUrl'),
+      level: _asInt(map['level'], 'me.level'),
+      xp: _asInt(map['xp'], 'me.xp'),
+      lifetimeRepScore: _asDouble(
+        map['lifetimeRepScore'],
+        'me.lifetimeRepScore',
+      ),
+      homeSpotId: _asStringOrNull(map['homeSpotId'], 'me.homeSpotId'),
+      unlockedTiers: _asStringList(map['unlockedTiers'], 'me.unlockedTiers'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'handle': handle,
+    'avatarUrl': avatarUrl,
+    'level': level,
+    'xp': xp,
+    'lifetimeRepScore': lifetimeRepScore,
+    'homeSpotId': homeSpotId,
+    'unlockedTiers': unlockedTiers,
+  };
 }
 
 /// Measurement types (api-contract.md §evidence · Two measurement types).
@@ -979,6 +1008,29 @@ class DailyChallenge {
   /// seeded daily challenge; missions may award capped XP only.
   final int progress;
   final bool claimed;
+
+  /// True once the claim step is open — the server clamps `progress` to
+  /// `target`, so equality is the completion signal.
+  bool get complete => progress >= target;
+
+  factory DailyChallenge.fromJson(Object? json) {
+    final map = _asMap(json, 'challenges/daily');
+    return DailyChallenge(
+      templateId: _asString(map['templateId'], 'daily.templateId'),
+      description: _asString(map['description'], 'daily.description'),
+      target: _asInt(map['target'], 'daily.target'),
+      progress: _asInt(map['progress'], 'daily.progress'),
+      claimed: _asBool(map['claimed'], 'daily.claimed'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'templateId': templateId,
+    'description': description,
+    'target': target,
+    'progress': progress,
+    'claimed': claimed,
+  };
 }
 
 @immutable
@@ -987,6 +1039,19 @@ class ChallengeClaim {
 
   final bool claimed;
   final int xpAwarded;
+
+  factory ChallengeClaim.fromJson(Object? json) {
+    final map = _asMap(json, 'challenges/daily/claim');
+    return ChallengeClaim(
+      claimed: _asBool(map['claimed'], 'claim.claimed'),
+      xpAwarded: _asInt(map['xpAwarded'], 'claim.xpAwarded'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'claimed': claimed,
+    'xpAwarded': xpAwarded,
+  };
 }
 
 // ---------------------------------------------------------------------------

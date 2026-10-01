@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/challenges/data/challenges_providers.dart';
+import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/errors.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
@@ -85,14 +87,29 @@ class _DailyChallengeCard extends ConsumerWidget {
             ),
             const SizedBox(height: RepRushTokens.spaceXs),
             Text(
-              '${challenge.progress}/${challenge.target} verified reps',
+              challenge.complete
+                  ? '${challenge.progress}/${challenge.target} — complete!'
+                  : '${challenge.progress}/${challenge.target} · '
+                        '${challenge.target - challenge.progress} to go',
               style: RepRushTokens.bodyLabel,
             ),
             const SizedBox(height: RepRushTokens.spaceMd),
+            // Claim opens only once the server-verified count reaches the
+            // target; before that the button would only produce an error.
             BrandButton(
-              onPressed: challenge.claimed ? null : () => _claim(context, ref),
-              label: challenge.claimed ? 'Claimed' : 'Claim reward',
-              icon: challenge.claimed ? Icons.check : Icons.redeem,
+              onPressed: challenge.claimed || !challenge.complete
+                  ? null
+                  : () => _claim(context, ref),
+              label: challenge.claimed
+                  ? 'Claimed'
+                  : challenge.complete
+                  ? 'Claim reward'
+                  : 'Keep training',
+              icon: challenge.claimed
+                  ? Icons.check
+                  : challenge.complete
+                  ? Icons.redeem
+                  : Icons.lock_clock,
             ),
           ],
         ),
@@ -105,11 +122,13 @@ class _DailyChallengeCard extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final claim = await ref.read(dailyChallengeProvider.notifier).claim();
+      // XP feeds the level shown on the profile.
+      ref.invalidate(profileProvider);
       messenger.showSnackBar(
-        SnackBar(content: Text('Claimed +${claim.xpAwarded} XP (capped)')),
+        SnackBar(content: Text('Reward claimed: +${claim.xpAwarded} XP')),
       );
     } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(SnackBar(content: Text(describeError(e))));
     }
   }
 }

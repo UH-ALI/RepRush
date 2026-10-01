@@ -69,3 +69,12 @@ verify_jwt = false
 
 [functions.movements]
 verify_jwt = false
+
+[functions.territory]
+verify_jwt = false
+
+[functions.me]
+verify_jwt = false
+
+[functions.challenges]
+verify_jwt = false

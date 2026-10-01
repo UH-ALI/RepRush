@@ -40,6 +40,7 @@ import type { Flag } from "../_shared/flags.ts";
 import { toFlagPayloads, toSetPayloads } from "../_shared/outcome.ts";
 import { error, ErrorCode, HttpError, json, preflight, respond } from "../_shared/responses.ts";
 import {
+  challengeXp,
   clearOwnership,
   consumeSession,
   insertFlip,
@@ -190,12 +191,16 @@ async function handleSubmit(req: Request, user: Authed): Promise<Consequences> {
   }
 
   // Independent reads; no ordering between them, so they go out together. The
-  // three round trips are the whole latency cost of the live path beyond scoring.
-  const [unlocked, counter, priorXp] = await Promise.all([
+  // four round trips are the whole latency cost of the live path beyond scoring.
+  const [unlocked, counter, priorScore, priorBonusXp] = await Promise.all([
     loadUnlocked(client, user.userId),
     loadDailyCounter(client, user.userId, day),
     lifetimeScore(client, user.userId),
+    challengeXp(client, user.userId),
   ]);
+  // The same XP definition GET /me reports (round(lifetime RepScore) + claimed
+  // challenge XP), so the level on the summary screen and on the profile agree.
+  const priorXp = Math.round(priorScore) + priorBonusXp;
 
   // 7. Recompute. Every number in the response below originates here or in the
   //    catalogue — none in the payload.

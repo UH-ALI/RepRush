@@ -1,16 +1,32 @@
 /// Session feature providers (feature-scoped — §state rule 1).
 ///
 /// `CaptureController` (§state rule 3) is the sole writer of rep events; it
-/// lands with Track A. This file holds only the session lifecycle that B and
-/// C need today: start a one-shot session, submit Evidence.
+/// lands with Track A. This file holds the session lifecycle B and C need:
+/// start a one-shot session where the athlete is standing, submit Evidence, and
+/// refresh every screen that shows the consequences.
 ///
 /// Ownership: B (data).
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/api_providers.dart';
+import 'package:reprush/core/location/geo.dart';
 import 'package:reprush/core/location/location.dart';
+import 'package:reprush/features/challenges/data/challenges_providers.dart';
+import 'package:reprush/features/progression/data/progression_providers.dart';
+import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
+
+/// Why a session cannot start where the athlete is. [message] is athlete-facing
+/// copy, safe to show as-is.
+class TrainingBlocked implements Exception {
+  const TrainingBlocked(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 /// The active one-shot session (I2), or `null` when no session is open.
 /// Session context is deterministic: territory always resolves from the
@@ -31,7 +47,39 @@ class ActiveSessionController extends Notifier<SessionStart?> {
   /// Read-only accessor for the retained start location.
   SessionLocation? get startLocation => _startLocation;
 
-  /// `POST /session/start` — opens a session using the device location (C1).
+  /// The ONE way the UI opens a session — the map's hex sheet and the workout
+  /// tab both come through here.
+  ///
+  /// Takes a fresh, accuracy-gated fix. When [targetH3] names the hex the
+  /// athlete tapped, the fix must be inside it: the server credits the hex the
+  /// athlete is actually standing in no matter what was tapped (territory
+  /// resolves from the server-recorded start fix), so opening a session "for" a
+  /// hex across town would only promise a capture that can never happen.
+  Future<SessionStart> startHere({String? targetH3}) async {
+    final location = await readSessionLocation(ref);
+    if (targetH3 != null) {
+      final cells = await ref.read(hexesProvider.future);
+      final target = cells.where((c) => c.h3 == targetH3).firstOrNull;
+      if (target != null &&
+          !polygonContains(target.polygon, location.lat, location.lng)) {
+        final centre = polygonCentre(target.polygon);
+        final away = distanceM(
+          location.lat,
+          location.lng,
+          centre.lat,
+          centre.lng,
+        );
+        throw TrainingBlocked(
+          "You're ${formatDistance(away)} from this hex. Walk into it to "
+          'train for it.',
+        );
+      }
+    }
+    return start(location: location);
+  }
+
+  /// `POST /session/start` — opens a session at [location] (C1). Prefer
+  /// [startHere]; this is the raw call it wraps.
   Future<SessionStart> start({
     required SessionLocation location,
     String? spotId,
@@ -44,14 +92,32 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     return started;
   }
 
+  /// Drops the local session without submitting. The server row simply expires
+  /// (4 h, I2) — nothing is scored, and nothing can be replayed later because
+  /// the id is forgotten here.
+  void abandon() {
+    _startLocation = null;
+    state = null;
+  }
+
   /// `POST /session/submit` — consumes the session; returns all consequences
   /// in one response (C4). Throws `SESSION_CONTEXT_MISMATCH` etc. per the
   /// contract; the server always uses the session-start context for
   /// territory.
+  ///
+  /// On success every provider that shows a consequence is invalidated, so the
+  /// map's hex colour, the leaderboard, XP/level and challenge progress all
+  /// reflect the set the moment the summary is dismissed.
   Future<SubmitResult> submit(Map<String, Object?> evidence) async {
     final result = await ref.read(sessionRepositoryProvider).submit(evidence);
     state = null; // one-shot: submitting consumes the session (I2).
     _startLocation = null;
+    ref
+      ..invalidate(hexesProvider)
+      ..invalidate(leaderboardProvider)
+      ..invalidate(profileProvider)
+      ..invalidate(movementsProvider)
+      ..invalidate(dailyChallengeProvider);
     return result;
   }
 }
@@ -61,6 +127,10 @@ final activeSessionProvider =
       ActiveSessionController.new,
     );
 
-Future<SessionLocation> readSessionLocation() async {
+/// The fix a session starts from. Stub mode uses the demo venue — the same
+/// place the stub map is drawn around — so the hex gate is consistent there
+/// too; live mode takes a fresh device fix that must pass the 50 m gate.
+Future<SessionLocation> readSessionLocation(Ref ref) async {
+  if (!ref.read(backendConfigProvider).isLive) return demoVenueLocation;
   return readDeviceLocation();
 }

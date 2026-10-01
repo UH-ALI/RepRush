@@ -8,14 +8,18 @@ class MovementChip extends StatelessWidget {
 
   final Movement movement;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// Null disables the chip (e.g. while a set is in progress); a disabled
+  /// chip that is not the selected one is dimmed like a locked movement.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final enabled = movement.unlocked && onTap != null;
     return Opacity(
-      opacity: movement.unlocked ? 1 : .45,
+      opacity: enabled || selected ? 1 : .45,
       child: GestureDetector(
-        onTap: movement.unlocked ? onTap : null,
+        onTap: enabled ? onTap : null,
         child: AnimatedContainer(
           duration: RepRushTokens.medium,
           curve: Curves.easeOutCubic,
@@ -35,7 +39,7 @@ class MovementChip extends StatelessWidget {
                 if (!movement.unlocked) const Icon(Icons.lock, size: 16),
               ]),
               const Spacer(),
-              Text(movement.id.replaceAll('_', ' '), maxLines: 1, overflow: TextOverflow.ellipsis,
+              Text(movementDisplayName(movement.id), maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -50,10 +54,23 @@ class MovementChip extends StatelessWidget {
   }
 
   IconData _iconFor(MovementFamily family) => switch (family) {
-    MovementFamily.squat => Icons.directions_run,
-    MovementFamily.push => Icons.fitness_center,
+    MovementFamily.squat => Icons.accessibility_new,
+    MovementFamily.push => Icons.sports_gymnastics,
     MovementFamily.pull => Icons.vertical_align_top,
     MovementFamily.hold => Icons.timer_outlined,
     MovementFamily.jump => Icons.north,
   };
+}
+
+/// "push_up" → "Push-up", "archer_push_up" → "Archer push-up". The catalogue
+/// ids are snake_case wire values; athletes read hyphenated names.
+String movementDisplayName(String id) {
+  final words = id
+      .replaceAll('push_up', 'push-up')
+      .replaceAll('pull_up', 'pull-up')
+      .replaceAll('muscle_up', 'muscle-up')
+      .replaceAll('chin_up', 'chin-up')
+      .replaceAll('sit_up', 'sit-up')
+      .replaceAll('_', ' ');
+  return words.isEmpty ? words : words[0].toUpperCase() + words.substring(1);
 }

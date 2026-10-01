@@ -1,6 +1,5 @@
-/// Capture placeholder — Track A owns the real capture flow (roles.md A-3
-/// through A-19): camera → `InputImage` → pose landmarks → rep state machine
-/// → Evidence. Nothing in this foundation touches ML Kit or the camera yet.
+/// Shown where the camera will appear before a session starts: what the
+/// camera does, how to set the phone up, and the privacy promise.
 ///
 /// Ownership: A.
 library;
@@ -21,34 +20,56 @@ class CapturePlaceholder extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.videocam_outlined),
+                const Icon(Icons.videocam_outlined, color: RepRushTokens.brand),
                 const SizedBox(width: RepRushTokens.spaceSm),
                 Text(
-                  'Camera counter',
+                  'Your camera counts the reps',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
-            const SizedBox(height: RepRushTokens.spaceXs),
-            const Text(
-              'Slice 1 counts squats on-device — no frame ever leaves the '
-              'device (B2). Capture lands with Track A; this placeholder is '
-              'the entry point C hands A.',
-            ),
             const SizedBox(height: RepRushTokens.spaceSm),
-            Wrap(
-              spacing: RepRushTokens.spaceSm,
-              children: [
-                for (final state in LiveFeedbackState.values)
-                  Chip(
-                    avatar: Icon(state.icon, size: 18),
-                    label: Text(state.cue),
-                  ),
-              ],
+            const _Step(
+              icon: Icons.stay_current_portrait,
+              text: 'Prop your phone up so your whole body is in view.',
+            ),
+            const _Step(
+              icon: Icons.accessibility_new,
+              text: 'Hold still for a moment while it calibrates.',
+            ),
+            const _Step(
+              icon: Icons.repeat,
+              text: 'Train — every clean rep is counted, and tap Finish when '
+                  'you are done.',
+            ),
+            const _Step(
+              icon: Icons.lock_outline,
+              text: 'Video never leaves your phone. Only rep measurements are '
+                  'sent.',
             ),
           ],
         ),
       ),
     );
   }
+}
+
+class _Step extends StatelessWidget {
+  const _Step({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: RepRushTokens.spaceXs),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Colors.white70),
+        const SizedBox(width: RepRushTokens.spaceSm),
+        Expanded(child: Text(text)),
+      ],
+    ),
+  );
 }

@@ -23,6 +23,10 @@ import { CatalogueError } from "./evidence/thresholds.ts";
  *   SCORING_FAILED      a seeding gap made the payload unscorable (our bug)
  *   BBOX_TOO_LARGE      GET /territory/hexes asked for more map than we serve
  *   INTERNAL            an unhandled server fault; still needs a code
+ *
+ * NOT_COMPLETE and ALREADY_CLAIMED are in models.dart already (the register names
+ * them for POST /challenges/daily/claim); they were added here when that route
+ * went live.
  */
 export const ErrorCode = {
   UNAUTHENTICATED: "UNAUTHENTICATED",
@@ -41,6 +45,8 @@ export const ErrorCode = {
   SCORING_FAILED: "SCORING_FAILED",
   BBOX_TOO_LARGE: "BBOX_TOO_LARGE",
   UNKNOWN_HEX: "UNKNOWN_HEX",
+  NOT_COMPLETE: "NOT_COMPLETE",
+  ALREADY_CLAIMED: "ALREADY_CLAIMED",
   INTERNAL: "INTERNAL",
 } as const;
 

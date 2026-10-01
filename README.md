@@ -1,62 +1,62 @@
-# RepRush
+# 🟠 RepRush
 
-**Camera-based calisthenics tracking with a territory-game layer.**
+### Train anywhere. Claim your ground. 🗺️
 
-RepRush is a Flutter mobile prototype that uses **on-device Google ML Kit Pose Detection** to turn bodyweight exercises into tracked repetitions, form feedback, and game progression. Camera frames stay on-device; video is not uploaded.
+[![Flutter](https://img.shields.io/badge/Flutter-app-54C5F8?logo=flutter&logoColor=white)](https://flutter.dev/) [![Camera powered](https://img.shields.io/badge/Camera-powered-FF8A3D?logo=googlecamera&logoColor=white)](#how-it-works) [![Privacy first](https://img.shields.io/badge/Privacy-first-20B486?logo=shield&logoColor=white)](#privacy-by-design) [![Status](https://img.shields.io/badge/Status-hackathon%20prototype-F05D5E)](#project-notes)
 
-## Current Implementation
+> 💪 **Your workout is your move.** Turn real movement into territory, progress, and friendly local rivalry.
 
-The computer-vision pipeline currently supports three exercises:
+RepRush turns bodyweight training into a live territory game. Choose a movement, put your phone where it can see you, and let the camera count your reps. Your workout becomes power on the map.
 
-- Squats
-- Push-ups
-- Pull-ups
+No equipment. No gym membership. Just movement, places worth defending, and a reason to come back tomorrow.
 
-The app extracts body landmarks from the camera stream and uses **joint-angle based movement logic** to detect exercise states and repetitions. The implementation also uses temporal averaging/smoothing and a calibrated rest-state angle to reduce instability in noisy frame-by-frame landmark estimates.
+## ⚡ How it works
 
-> **Accuracy:** a formal accuracy benchmark has not yet been measured, so no accuracy percentage is claimed here.
+| | Your move |
+| --- | --- |
+| **1 · 🎯 Choose** | Pick a movement: squat, push-up, pull-up, plank, jumping jack, and more. |
+| **2 · 📱 Train** | Put your phone where it can see you. Your reps are counted as you move. |
+| **3 · 🔥 Build power** | Good form and harder variations make every workout count for more. |
+| **4 · 🗺️ Claim** | Capture the area around you and compete for local training spots. |
 
-## How It Works
+RepRush has two connected kinds of territory:
 
-```mermaid
-graph LR
-    A[Camera Stream] --> B[On-device ML Kit Pose Detection]
-    B --> C[Body Landmarks]
-    C --> D[Joint Angles]
-    D --> E[Smoothed / Averaged Signals]
-    E --> F[Exercise State]
-    F --> G[Rep Count + Form Feedback]
-```
+| Territory | What it represents | How you claim it |
+| --- | --- | --- |
+| **🟧 Map cells** | Neighbourhood-sized areas | Train anywhere inside the cell |
+| **📍 Training spots** | Parks, gyms, pull-up bars, and other places | Train there and rise on its local leaderboard |
 
-The early prototype encountered frame-rate instability during pose tracking. Smoothing/averaging and rest-state calibration were used to make the tracking behavior more stable in practice.
+> 🏆 **Hold the spot, strengthen the cell.** Territory gradually cools off over time, so staying on top means staying active.
 
-## Privacy
+## 🏃 Built for real movement
 
-Pose detection runs on-device. The application does not upload the user's workout video. Only the workout evidence required by the broader game system is used outside the camera-processing path.
+Calisthenics is the heart of RepRush: it needs no equipment, works in parks and living rooms, and can be measured by a phone camera. Progress comes from learning more difficult variations, not lifting heavier weights.
 
-## Technology Stack
+Start with the fundamentals and work your way up:
 
-| Area | Technology |
-|---|---|
-| Mobile | Flutter, Dart |
-| Pose estimation | Google ML Kit Pose Detection |
-| Camera | Flutter Camera plugin |
-| State management | Riverpod |
-| Backend | Supabase |
-| Maps / location | Flutter Map, Geolocator |
+- 🦵 Squat → jump squat → pistol squat
+- 🤸 Knee push-up → push-up → diamond push-up
+- 🪜 Dead hang → pull-up → muscle-up
+- ⏱️ Wall sit → plank → L-sit
 
-## Project Status
+Every session gives you a clear result: reps, a form grade, score, personal records, and a visible effect on the map.
 
-RepRush is an active hackathon prototype. The current CV scope is deliberately focused on getting reliable exercise-state tracking working for three movements before expanding the exercise library and adding formal evaluation.
+## 🔒 Privacy by design
 
-## Run Locally
+Your camera feed stays on your phone. RepRush uses on-device pose detection to turn movement into measurements, then sends only the workout evidence needed to validate your result. No video is uploaded.
+
+Scores are checked before they affect territory or leaderboards, and one workout cannot simply be replayed later. The goal is a competition that feels fair without asking you to give up your privacy.
+
+## 🛠️ Try the project
+
+RepRush is a Flutter project. You will need Flutter installed and a physical Android or iOS device for camera features.
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-Useful development commands:
+Useful commands while developing:
 
 ```bash
 flutter analyze
@@ -64,8 +64,14 @@ flutter test
 dart format .
 ```
 
-## Documentation
+## 📚 Project notes
+
+The app is being built as a focused hackathon prototype, with the complete path kept in view: capture a workout, validate it, score it, and update the territory map.
 
 - [Product requirements](docs/requirements.md)
 - [API and evidence contract](docs/api-contract.md)
 - [Team roles and project structure](docs/roles.md)
+
+## 🌟 The RepRush promise
+
+Do a workout. Make your mark. Come back and defend it.

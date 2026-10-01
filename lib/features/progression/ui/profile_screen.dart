@@ -45,14 +45,20 @@ class ProfileScreen extends ConsumerWidget {
                       Text(me.handle, style: RepRushTokens.sectionTitle),
                       Text('Level ${me.level} · ${me.xp} XP', style: RepRushTokens.bodyLabel),
                     ])),
-                    Text(me.lifetimeRepScore.toStringAsFixed(0), style: RepRushTokens.statNumber),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text(me.lifetimeRepScore.toStringAsFixed(0), style: RepRushTokens.statNumber),
+                      Text('lifetime score', style: RepRushTokens.bodyLabel),
+                    ]),
                   ]),
                   const SizedBox(height: RepRushTokens.spaceMd),
                   XpBar(xp: me.xp, level: me.level),
                   const SizedBox(height: RepRushTokens.spaceMd),
                   Row(children: [
-                    Expanded(child: Text('Home spot: ${me.homeSpotId ?? '—'}', style: RepRushTokens.bodyLabel)),
-                    Text('${me.unlockedTiers.length} tiers unlocked', style: RepRushTokens.bodyLabel),
+                    if (me.homeSpotId case final spot?)
+                      Expanded(child: Text('Home spot: $spot', style: RepRushTokens.bodyLabel))
+                    else
+                      const Spacer(),
+                    Text('${me.unlockedTiers.length} movements unlocked', style: RepRushTokens.bodyLabel),
                   ]),
                 ],
               ),
@@ -73,8 +79,9 @@ class ProfileScreen extends ConsumerWidget {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: TierBadge(tier: movement.tier, locked: !movement.unlocked),
-                      title: Text(movement.id.replaceAll('_', ' '), style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text('×${movement.difficulty.toStringAsFixed(1)} · ${movement.family.wireName}'),
+                      title: Text(movementDisplayName(movement.id), style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('${movement.difficulty.toStringAsFixed(1)}× points'
+                          '${movement.repsTowardNextTier > 0 ? ' · ${movement.repsTowardNextTier} reps banked' : ''}'),
                       trailing: movement.unlocked ? const Icon(Icons.check_circle, color: RepRushTokens.brand) : const Icon(Icons.lock_outline),
                     ),
                 ]),
