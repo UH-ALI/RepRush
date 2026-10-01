@@ -50,6 +50,10 @@ class _CountingProgression implements ProgressionRepository {
   }
 
   @override
+  Future<UserProfile> rename(String handle) =>
+      const StubProgressionRepository().rename(handle);
+
+  @override
   Future<List<Movement>> movements() =>
       const StubProgressionRepository().movements();
 }

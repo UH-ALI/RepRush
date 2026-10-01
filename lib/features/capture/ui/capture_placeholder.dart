@@ -6,45 +6,40 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/shared/widgets/glass_card.dart';
 
 class CapturePlaceholder extends StatelessWidget {
   const CapturePlaceholder({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(RepRushTokens.spaceMd),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.videocam_outlined, color: RepRushTokens.brand),
-                const SizedBox(width: RepRushTokens.spaceSm),
-                Text(
-                  'How it works',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: RepRushTokens.spaceSm),
-            const _Step(
-              icon: Icons.stay_current_portrait,
-              text: 'Prop your phone up so your whole body is in view.',
-            ),
-            const _Step(
-              icon: Icons.accessibility_new,
-              text: 'Hold still for a moment while it calibrates.',
-            ),
-            const _Step(
-              icon: Icons.repeat,
-              text:
-                  'Train — every clean rep is counted, and tap Finish when '
-                  'you are done.',
-            ),
-          ],
-        ),
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.videocam_outlined, color: RepRushTokens.brand),
+              const SizedBox(width: RepRushTokens.spaceSm),
+              Text('How it works', style: RepRushTokens.sectionTitle),
+            ],
+          ),
+          const SizedBox(height: RepRushTokens.spaceSm),
+          const _Step(
+            icon: Icons.stay_current_portrait,
+            text: 'Prop your phone up so your whole body is in view.',
+          ),
+          const _Step(
+            icon: Icons.accessibility_new,
+            text: 'Hold still for a moment while it calibrates.',
+          ),
+          const _Step(
+            icon: Icons.repeat,
+            text:
+                'Train — every clean rep is counted, and tap Finish when '
+                'you are done.',
+          ),
+        ],
       ),
     );
   }

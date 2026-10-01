@@ -77,6 +77,14 @@ class LiveProgressionRepository implements ProgressionRepository {
     return UserProfile.fromJson(body);
   }
 
+  /// The server validates and normalises the handle (trims, collapses spaces),
+  /// so the returned profile — not [handle] — is what to show.
+  @override
+  Future<UserProfile> rename(String handle) async {
+    final body = await transport.post('me', {'handle': handle});
+    return UserProfile.fromJson(body);
+  }
+
   /// The catalogue plus this athlete's per-user state. Rows arrive sorted by family
   /// then tier, `difficulty` reaches the wire as a bare number (`1`, not `1.0`) for
   /// every whole-valued multiplier, and `repsTowardNextTier` counts reps banked —

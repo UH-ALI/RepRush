@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/backend_config.dart';
 import 'package:reprush/core/api/live/api_transport.dart';
 import 'package:reprush/core/api/live/live_repositories.dart';
+import 'package:reprush/core/api/live/supabase_account.dart';
 import 'package:reprush/core/api/live/supabase_transport.dart';
 import 'package:reprush/core/api/repositories.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart';
@@ -47,6 +48,15 @@ final progressionRepositoryProvider = Provider<ProgressionRepository>((ref) {
   return transport == null
       ? const StubProgressionRepository()
       : LiveProgressionRepository(transport: transport);
+});
+
+/// Supabase Auth in live builds (guest → email account, log in, log out); an
+/// in-memory stand-in in stub builds.
+final accountRepositoryProvider = Provider<AccountRepository>((ref) {
+  final transport = ref.watch(apiTransportProvider);
+  return transport is SupabaseTransport
+      ? SupabaseAccountRepository(transport: transport)
+      : StubAccountRepository();
 });
 
 /// Live whole: both challenge routes ship in the one `challenges` function.

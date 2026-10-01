@@ -17,6 +17,7 @@ import { ErrorCode, HttpError } from "./responses.ts";
 import { MAX_SESSIONS_PER_DAY } from "./scoring/caps.ts";
 import type { Contribution, MaterialisedOwner } from "./territory.ts";
 import type { FlagPayload, SetPayload } from "./outcome.ts";
+import { likeLiteral } from "./handles.ts";
 import { SESSION_EXPIRY_MS, type SessionRow } from "./validation/session.ts";
 
 /** Turns a PostgREST failure into a 500 with the real reason in the log. */
@@ -577,6 +578,33 @@ export async function insertClaim(
   // 23505 = unique_violation.
   if (error && (error as { code?: string }).code === "23505") return false;
   if (error) failDb("recording the challenge claim", error);
+  return true;
+}
+
+/**
+ * Renames [userId] to an already-normalised [handle]. False when another athlete
+ * holds it — compared case-insensitively, so "Salik" and "salik" can't sit side
+ * by side on the leaderboard. The column's own unique constraint (case-sensitive)
+ * still backstops the race between the check and the update.
+ */
+export async function updateHandle(
+  client: Db,
+  userId: string,
+  handle: string,
+): Promise<boolean> {
+  const { data: clash, error: readError } = await client
+    .from("profiles")
+    .select("id")
+    .ilike("handle", likeLiteral(handle))
+    .neq("id", userId)
+    .limit(1);
+  if (readError) failDb("checking the handle", readError);
+  if ((clash ?? []).length > 0) return false;
+
+  const { error } = await client.from("profiles").update({ handle }).eq("id", userId);
+  // 23505 = unique_violation.
+  if (error && (error as { code?: string }).code === "23505") return false;
+  if (error) failDb("renaming the profile", error);
   return true;
 }
 

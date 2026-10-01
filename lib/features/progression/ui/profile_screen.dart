@@ -1,5 +1,6 @@
 /// Profile — `GET /me` plus the movement library (`GET /movements`) and your
-/// standing from the territory board (requirements.md A2, C-7).
+/// standing from the territory board (requirements.md A2, C-7), your name, and
+/// the guest / signed-in account line.
 ///
 /// Ownership: C (ui).
 library;
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
+import 'package:reprush/features/progression/ui/account_sheets.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
@@ -53,10 +55,28 @@ class ProfileScreen extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    me.handle,
-                                    style: RepRushTokens.sectionTitle,
-                                    overflow: TextOverflow.ellipsis,
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          me.handle,
+                                          style: RepRushTokens.sectionTitle,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Edit name',
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(
+                                          Icons.edit_outlined,
+                                          size: 18,
+                                        ),
+                                        onPressed: () => showRenameSheet(
+                                          context,
+                                          current: me.handle,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   Text(
                                     'Level ${me.level} · ${me.xp} XP',
@@ -72,6 +92,10 @@ class ProfileScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  if (isGeneratedHandle(me.handle)) ...[
+                    const SizedBox(height: RepRushTokens.spaceSm),
+                    _NamePrompt(handle: me.handle),
+                  ],
                   const SizedBox(height: RepRushTokens.spaceSm),
                   Row(
                     children: [
@@ -104,6 +128,8 @@ class ProfileScreen extends ConsumerWidget {
               );
             },
           ),
+          const SizedBox(height: RepRushTokens.spaceSm),
+          const _AccountCard(),
           const SizedBox(height: RepRushTokens.spaceLg),
           Text('Movement library', style: RepRushTokens.sectionTitle),
           const SizedBox(height: RepRushTokens.spaceSm),
@@ -143,6 +169,116 @@ class ProfileScreen extends ConsumerWidget {
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown while the athlete still has their generated guest handle.
+class _NamePrompt extends StatelessWidget {
+  const _NamePrompt({required this.handle});
+
+  final String handle;
+
+  @override
+  Widget build(BuildContext context) => GlassCard(
+    onTap: () => showRenameSheet(context, current: handle),
+    child: Row(
+      children: [
+        const Icon(Icons.badge_outlined, color: RepRushTokens.brand),
+        const SizedBox(width: RepRushTokens.spaceSm + 4),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Pick your name',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                'So rivals know who took their hex.',
+                style: RepRushTokens.bodyLabel,
+              ),
+            ],
+          ),
+        ),
+        const Icon(Icons.chevron_right, color: Colors.white54),
+      ],
+    ),
+  );
+}
+
+/// Guest or signed in, and the one action that moves between them.
+class _AccountCard extends ConsumerWidget {
+  const _AccountCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final account = ref.watch(accountProvider).value;
+    if (account == null) return const SizedBox.shrink();
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                account.isGuest
+                    ? Icons.person_outline
+                    : Icons.verified_user_outlined,
+                color: RepRushTokens.brand,
+              ),
+              const SizedBox(width: RepRushTokens.spaceSm + 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      account.isGuest ? 'Playing as a guest' : 'Signed in',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      account.isGuest
+                          ? 'Your progress lives on this phone only.'
+                          : account.email!,
+                      style: RepRushTokens.bodyLabel,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: RepRushTokens.spaceSm),
+          if (account.isGuest)
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: () => showAccountSheet(
+                      context,
+                      AccountSheetMode.saveProgress,
+                    ),
+                    child: const Text('Save progress'),
+                  ),
+                ),
+                const SizedBox(width: RepRushTokens.spaceSm),
+                TextButton(
+                  onPressed: () =>
+                      showAccountSheet(context, AccountSheetMode.logIn),
+                  child: const Text('Log in'),
+                ),
+              ],
+            )
+          else
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => confirmLogOut(context, ref),
+                child: const Text('Log out'),
+              ),
+            ),
         ],
       ),
     );

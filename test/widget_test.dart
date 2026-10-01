@@ -8,8 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/app/app.dart';
 import 'package:reprush/app/onboarding.dart';
+import 'package:reprush/core/api/stub/stub_repositories.dart';
+import 'package:reprush/features/progression/ui/account_sheets.dart';
 import 'package:reprush/features/session/ui/session_summary_screen.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/widgets/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The map's "you are here" pulse loops forever by design, so `pumpAndSettle`
@@ -133,6 +136,133 @@ void main() {
     expect(find.text('#4'), findsOneWidget);
   });
 
+  group('name and account', () {
+    setUp(() => StubProgressionRepository.handle = 'demo_athlete');
+    tearDown(() => StubProgressionRepository.handle = 'demo_athlete');
+
+    Future<void> openProfile(WidgetTester tester) async {
+      await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+      await settle(tester);
+      await tester.tap(find.text('Profile'));
+      await settle(tester);
+    }
+
+    Finder primary(String label) => find.descendant(
+      of: find.byType(BrandButton),
+      matching: find.text(label),
+    );
+
+    test('only the signup-generated handle counts as unnamed', () {
+      expect(isGeneratedHandle('athlete_3f9a2c'), isTrue);
+      expect(isGeneratedHandle('athlete_3f9a2'), isFalse);
+      expect(isGeneratedHandle('Salik'), isFalse);
+      expect(isGeneratedHandle('athlete_salik1'), isFalse);
+    });
+
+    testWidgets('a guest handle gets a pick-your-name prompt', (tester) async {
+      StubProgressionRepository.handle = 'athlete_3f9a2c';
+      await openProfile(tester);
+      expect(find.text('Pick your name'), findsOneWidget);
+    });
+
+    testWidgets('a chosen name gets no prompt', (tester) async {
+      await openProfile(tester);
+      expect(find.text('Pick your name'), findsNothing);
+    });
+
+    testWidgets('renaming updates the profile header', (tester) async {
+      await openProfile(tester);
+
+      await tester.tap(find.byTooltip('Edit name'));
+      await settle(tester);
+      await tester.enterText(find.byType(TextField), 'Salik');
+      await tester.tap(primary('Save name'));
+      await settle(tester);
+
+      expect(find.text('Salik'), findsOneWidget);
+      expect(find.text('demo_athlete'), findsNothing);
+    });
+
+    testWidgets('a guest saves progress, then logs out back to a guest', (
+      tester,
+    ) async {
+      await openProfile(tester);
+      expect(find.text('Playing as a guest'), findsOneWidget);
+
+      await tester.tap(find.text('Save progress'));
+      await settle(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email'),
+        'salik@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Password'),
+        'hunter22',
+      );
+      await tester.tap(primary('Save progress'));
+      await settle(tester);
+
+      expect(find.text('Signed in'), findsOneWidget);
+      expect(find.text('salik@example.com'), findsOneWidget);
+
+      await tester.tap(find.text('Log out'));
+      await settle(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(TextButton, 'Log out'),
+        ),
+      );
+      await settle(tester);
+
+      expect(find.text('Playing as a guest'), findsOneWidget);
+    });
+
+    testWidgets('a short password is caught before any request', (
+      tester,
+    ) async {
+      await openProfile(tester);
+      await tester.tap(find.text('Log in'));
+      await settle(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email'),
+        'salik@example.com',
+      );
+      await tester.enterText(find.widgetWithText(TextField, 'Password'), '123');
+      await tester.tap(primary('Log in'));
+      await settle(tester);
+
+      expect(
+        find.text('Use a password of at least 6 characters.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a failed log-in shows the reason in the sheet', (
+      tester,
+    ) async {
+      await openProfile(tester);
+      await tester.tap(find.text('Log in'));
+      await settle(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email'),
+        'salik@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Password'),
+        'wrong-password',
+      );
+      await tester.tap(primary('Log in'));
+      await settle(tester);
+
+      expect(
+        find.text("That email and password don't match an account."),
+        findsOneWidget,
+      );
+      expect(find.text('Playing as a guest'), findsOneWidget);
+    });
+  });
+
   group('small phone (360×740)', () {
     void usePhone(WidgetTester tester) {
       tester.view.physicalSize = const Size(1080, 2220);
@@ -158,9 +288,7 @@ void main() {
       await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
       await settle(tester);
 
-      final owned = tester.renderObject<RenderParagraph>(
-        find.text('1 OWNED'),
-      );
+      final owned = tester.renderObject<RenderParagraph>(find.text('1 OWNED'));
       expect(owned.didExceedMaxLines, isFalse, reason: 'shown as "1 OW…"');
 
       // The status pill's right edge lines up with the zoom controls below

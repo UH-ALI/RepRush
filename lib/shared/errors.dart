@@ -18,6 +18,7 @@ String describeError(Object error) {
   return switch (error) {
     ApiException e => _describeApi(e),
     LocationException e => e.message,
+    AccountException e => e.message,
     FormatException() || TypeError() || StateError() =>
       'Something went wrong on our side. Please try again.',
     // Exceptions the app throws on purpose (e.g. TrainingBlocked) carry their
@@ -58,6 +59,9 @@ String _describeApi(ApiException e) => switch (e.code) {
   ApiErrorCode.unauthenticated =>
     "You're signed out. Restart the app to sign back in.",
   ApiErrorCode.bboxTooLarge => 'Zoom in a little to load territory.',
+  ApiErrorCode.invalidHandle =>
+    'Use 3–20 letters or numbers. Spaces, _ . and - are fine in between.',
+  ApiErrorCode.handleTaken => 'Someone already goes by that name. Try another.',
   _ when e.statusCode == 0 =>
     "Can't reach RepRush right now. Check your connection and try again.",
   _ => 'Something went wrong. Please try again.',

@@ -25,6 +25,7 @@ import "./trace_test.ts";
 import "./session_test.ts";
 import "./territory_test.ts";
 import "./challenges_test.ts";
+import "./handles_test.ts";
 import "./golden_test.ts";
 
 import { runTests } from "./_harness.ts";

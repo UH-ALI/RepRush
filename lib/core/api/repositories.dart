@@ -76,6 +76,10 @@ abstract interface class SpotsRepository {
 abstract interface class ProgressionRepository {
   Future<UserProfile> me();
 
+  /// `POST /me` — renames the athlete and returns the updated profile. Throws
+  /// `INVALID_HANDLE` or `HANDLE_TAKEN`.
+  Future<UserProfile> rename(String handle);
+
   Future<List<Movement>> movements();
 }
 
@@ -86,6 +90,27 @@ abstract interface class ChallengesRepository {
   /// Throws `NOT_COMPLETE` or `ALREADY_CLAIMED`. Missions may award capped XP
   /// only — territory power accrues only from verified RepScore.
   Future<ChallengeClaim> claimDaily();
+}
+
+/// Supabase Auth — not an Edge Function, so it sits beside the endpoint
+/// register rather than in it. Every method throws [AccountException] with
+/// athlete-facing copy.
+abstract interface class AccountRepository {
+  Future<AccountState> current();
+
+  /// Attaches [email] and [password] to the current guest account, in place:
+  /// same user id, so every score and hex stays put.
+  Future<AccountState> saveProgress({
+    required String email,
+    required String password,
+  });
+
+  /// Switches this phone to an existing account. The guest account being left
+  /// behind is not merged.
+  Future<AccountState> logIn({required String email, required String password});
+
+  /// Signs out and continues as a brand-new guest.
+  Future<AccountState> logOut();
 }
 
 /// `POST /devices/attest` (Day 6, I5).

@@ -3,10 +3,11 @@
 ///
 /// Ownership: B.
 ///
-/// This is the only file in `lib/` that imports `supabase_flutter`. Repositories
-/// depend on [ApiTransport]; nothing depends on this except `api_providers.dart`,
-/// which constructs it. Keeping the SDK behind one file is what makes §state rule 2
-/// ("the UI never calls Supabase directly") checkable by grep rather than by review.
+/// This and its sibling `supabase_account.dart` are the only files in `lib/` that
+/// import `supabase_flutter`. Repositories depend on [ApiTransport]; nothing
+/// depends on this except `api_providers.dart`, which constructs it. Keeping the
+/// SDK behind `live/` is what makes §state rule 2 ("the UI never calls Supabase
+/// directly") checkable by grep rather than by review.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -36,6 +37,11 @@ class SupabaseTransport implements ApiTransport {
   Future<void>? _ready;
 
   Future<void> get _ensured => _ready ??= _initialize();
+
+  /// Initialised and signed in (as a guest at least). The account repository
+  /// awaits this before touching `Supabase.instance`, so it shares the one
+  /// memoised initialisation instead of racing its own.
+  Future<void> ready() => _ensured;
 
   Future<void> _initialize() async {
     try {

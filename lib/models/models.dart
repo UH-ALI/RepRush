@@ -109,6 +109,10 @@ abstract final class ApiErrorCode {
   static const scoringFailed = 'SCORING_FAILED';
   static const internal = 'INTERNAL';
 
+  // `POST /me` (rename) — a profile write the register did not have.
+  static const invalidHandle = 'INVALID_HANDLE';
+  static const handleTaken = 'HANDLE_TAKEN';
+
   /// Every code above. Kept adjacent to them on purpose: adding a constant
   /// without adding it here makes [isKnown] report a contract-code as unknown,
   /// which is a loud failure rather than a silent one.
@@ -138,6 +142,8 @@ abstract final class ApiErrorCode {
     rateLimited,
     scoringFailed,
     internal,
+    invalidHandle,
+    handleTaken,
   };
 
   /// §Common rules: "Unknown codes are a contract bug — report them, don't guess
@@ -1063,4 +1069,33 @@ class AttestResult {
   const AttestResult({required this.bound});
 
   final bool bound;
+}
+
+// ---------------------------------------------------------------------------
+// Account
+// ---------------------------------------------------------------------------
+
+/// Who is signed in. Every athlete starts as a guest — a real account with no
+/// email, so scores and territory are already theirs — and can attach an email
+/// and password later without losing anything.
+@immutable
+class AccountState {
+  const AccountState.guest() : email = null;
+
+  const AccountState.signedIn(String this.email);
+
+  /// Null for a guest.
+  final String? email;
+
+  bool get isGuest => email == null;
+}
+
+/// A sign-in, sign-up or link failure, already in athlete-facing words.
+class AccountException implements Exception {
+  const AccountException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

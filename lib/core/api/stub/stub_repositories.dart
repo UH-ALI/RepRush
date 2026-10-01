@@ -343,23 +343,76 @@ class StubSpotsRepository implements SpotsRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Account
+// ---------------------------------------------------------------------------
+
+/// In-memory accounts: any email/password pair "exists" once saved, and
+/// a password starting `wrong` always fails, so the error path is reachable.
+class StubAccountRepository implements AccountRepository {
+  AccountState _state = const AccountState.guest();
+
+  @override
+  Future<AccountState> current() async => _state;
+
+  @override
+  Future<AccountState> saveProgress({
+    required String email,
+    required String password,
+  }) async => _state = AccountState.signedIn(email);
+
+  @override
+  Future<AccountState> logIn({
+    required String email,
+    required String password,
+  }) async {
+    if (password.startsWith('wrong')) {
+      throw const AccountException(
+        "That email and password don't match an account.",
+      );
+    }
+    return _state = AccountState.signedIn(email);
+  }
+
+  @override
+  Future<AccountState> logOut() async => _state = const AccountState.guest();
+}
+
+// ---------------------------------------------------------------------------
 // Progression
 // ---------------------------------------------------------------------------
 
 class StubProgressionRepository implements ProgressionRepository {
   const StubProgressionRepository();
 
+  /// Process-wide so a rename survives the provider rebuilding the (const)
+  /// repository.
+  static String handle = 'demo_athlete';
+
   @override
   Future<UserProfile> me() async {
     // Stub: level 3, one unlock pending.
-    return const UserProfile(
-      handle: 'demo_athlete',
+    return UserProfile(
+      handle: handle,
       level: 3,
       xp: 540,
       lifetimeRepScore: 1240,
       homeSpotId: DemoVenue.demoSpotId,
-      unlockedTiers: ['squat_t2', 'push_up_t2', 'pull_up_t2', 'plank_t2'],
+      unlockedTiers: const ['squat_t2', 'push_up_t2', 'pull_up_t2', 'plank_t2'],
     );
+  }
+
+  @override
+  Future<UserProfile> rename(String handle) async {
+    final trimmed = handle.trim();
+    if (trimmed.length < 3 || trimmed.length > 20) {
+      throw const ApiException(
+        code: ApiErrorCode.invalidHandle,
+        message: 'Stub: a handle is 3-20 characters.',
+        statusCode: 422,
+      );
+    }
+    StubProgressionRepository.handle = trimmed;
+    return me();
   }
 
   @override

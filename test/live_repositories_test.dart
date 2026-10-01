@@ -563,6 +563,43 @@ void main() {
       final json = jsonDecode(_meJson) as Map<String, Object?>;
       expect(UserProfile.fromJson(json).toJson(), json);
     });
+
+    test('rename POSTs the handle to me and reads the profile back', () async {
+      final transport = _FakeTransport(
+        respond: (_) => <String, Object?>{
+          ...jsonDecode(_meJson) as Map<String, Object?>,
+          'handle': 'Salik',
+        },
+      );
+
+      final profile = await LiveProgressionRepository(
+        transport: transport,
+      ).rename('  Salik ');
+
+      expect(transport.only.verb, 'POST');
+      expect(transport.only.function, 'me');
+      expect(transport.only.body, {'handle': '  Salik '});
+      // The server's normalised handle wins, not what was typed.
+      expect(profile.handle, 'Salik');
+    });
+
+    test('HANDLE_TAKEN reaches the caller as a known code', () async {
+      final transport = _FakeTransport(
+        failWith: (_) => ApiException.fromResponse(
+          statusCode: 409,
+          body: {'code': 'HANDLE_TAKEN', 'message': '"Salik" is taken.'},
+        ),
+      );
+
+      await expectLater(
+        LiveProgressionRepository(transport: transport).rename('Salik'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ApiErrorCode.handleTaken)
+              .having((e) => e.unknownCode, 'unknownCode', isFalse),
+        ),
+      );
+    });
   });
 
   group('LiveChallengesRepository', () {
@@ -625,98 +662,105 @@ void main() {
   });
 
   group('LiveTerritoryRepository.hexes', () {
-    test('GETs territory/hexes with the bbox as one comma-joined query value', () async {
-      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexesJson));
+    test(
+      'GETs territory/hexes with the bbox as one comma-joined query value',
+      () async {
+        final transport = _FakeTransport(
+          respond: (_) => jsonDecode(_hexesJson),
+        );
 
-      await LiveTerritoryRepository(transport: transport).hexes(
-        swLat: 51.505,
-        swLng: -0.130,
-        neLat: 51.510,
-        neLng: -0.125,
-      );
+        await LiveTerritoryRepository(
+          transport: transport,
+        ).hexes(swLat: 51.505, swLng: -0.130, neLat: 51.510, neLng: -0.125);
 
-      final call = transport.only;
-      expect(call.verb, 'GET');
-      // The deployed function name plus the path tail Kong forwards, not the
-      // contract's slashed `GET /territory/hexes`.
-      expect(call.function, 'territory/hexes');
-      expect(call.body, isNull);
-      expect(call.query, <String, String>{
-        'bbox': '51.505,-0.13,51.51,-0.125',
-      });
-    });
+        final call = transport.only;
+        expect(call.verb, 'GET');
+        // The deployed function name plus the path tail Kong forwards, not the
+        // contract's slashed `GET /territory/hexes`.
+        expect(call.function, 'territory/hexes');
+        expect(call.body, isNull);
+        expect(call.query, <String, String>{
+          'bbox': '51.505,-0.13,51.51,-0.125',
+        });
+      },
+    );
 
-    test('reads the claimed-cell array, coercing whole-valued power to double', () async {
-      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexesJson));
+    test(
+      'reads the claimed-cell array, coercing whole-valued power to double',
+      () async {
+        final transport = _FakeTransport(
+          respond: (_) => jsonDecode(_hexesJson),
+        );
 
-      final cells = await LiveTerritoryRepository(transport: transport).hexes(
-        swLat: 51.505,
-        swLng: -0.130,
-        neLat: 51.510,
-        neLng: -0.125,
-      );
+        final cells = await LiveTerritoryRepository(
+          transport: transport,
+        ).hexes(swLat: 51.505, swLng: -0.130, neLat: 51.510, neLng: -0.125);
 
-      expect(cells, hasLength(2));
-      final rival = cells[0];
-      expect(rival.h3, '88195da49bfffff');
-      expect(rival.ownerColor, 'rival');
-      expect(rival.ownerHandle, 'rival_kat');
-      expect(rival.power, 1240.5);
-      expect(rival.yours, isFalse);
-      // The polygon ships as plain {lat,lng} points — no H3 maths on the client.
-      expect(rival.polygon, hasLength(3));
-      expect(rival.polygon.first.lat, 51.5074);
-      expect(rival.polygon.first.lng, -0.1278);
+        expect(cells, hasLength(2));
+        final rival = cells[0];
+        expect(rival.h3, '88195da49bfffff');
+        expect(rival.ownerColor, 'rival');
+        expect(rival.ownerHandle, 'rival_kat');
+        expect(rival.power, 1240.5);
+        expect(rival.yours, isFalse);
+        // The polygon ships as plain {lat,lng} points — no H3 maths on the client.
+        expect(rival.polygon, hasLength(3));
+        expect(rival.polygon.first.lat, 51.5074);
+        expect(rival.polygon.first.lng, -0.1278);
 
-      // `power: 620` arrived as a JSON int and must become a double, the same trap
-      // the five integral `difficulty` values above cover.
-      final mine = cells[1];
-      expect(mine.ownerColor, 'mine');
-      expect(mine.power, 620.0);
-      expect(mine.yours, isTrue);
-    });
+        // `power: 620` arrived as a JSON int and must become a double, the same trap
+        // the five integral `difficulty` values above cover.
+        final mine = cells[1];
+        expect(mine.ownerColor, 'mine');
+        expect(mine.power, 620.0);
+        expect(mine.yours, isTrue);
+      },
+    );
 
     test('round-trips a cell: fromJson(x).toJson() == x', () async {
-      final wire = (jsonDecode(_hexesJson) as List<Object?>).cast<Map<String, Object?>>();
+      final wire = (jsonDecode(_hexesJson) as List<Object?>)
+          .cast<Map<String, Object?>>();
       for (final raw in wire) {
         expect(HexCell.fromJson(raw).toJson(), raw);
       }
     });
 
-    test('a bbox-too-large rejection reaches the caller with its code', () async {
-      final transport = _FakeTransport(
-        failWith: (_) => ApiException.fromResponse(
-          statusCode: 400,
-          body: <String, Object?>{
-            'code': ApiErrorCode.bboxTooLarge,
-            'message': 'bbox side exceeds 0.5°',
-          },
-        ),
-      );
+    test(
+      'a bbox-too-large rejection reaches the caller with its code',
+      () async {
+        final transport = _FakeTransport(
+          failWith: (_) => ApiException.fromResponse(
+            statusCode: 400,
+            body: <String, Object?>{
+              'code': ApiErrorCode.bboxTooLarge,
+              'message': 'bbox side exceeds 0.5°',
+            },
+          ),
+        );
 
-      await expectLater(
-        LiveTerritoryRepository(transport: transport).hexes(
-          swLat: 0,
-          swLng: 0,
-          neLat: 10,
-          neLng: 10,
-        ),
-        throwsA(
-          isA<ApiException>()
-              .having((e) => e.code, 'code', ApiErrorCode.bboxTooLarge)
-              .having((e) => e.statusCode, 'statusCode', 400),
-        ),
-      );
-    });
+        await expectLater(
+          LiveTerritoryRepository(
+            transport: transport,
+          ).hexes(swLat: 0, swLng: 0, neLat: 10, neLng: 10),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.code, 'code', ApiErrorCode.bboxTooLarge)
+                .having((e) => e.statusCode, 'statusCode', 400),
+          ),
+        );
+      },
+    );
   });
 
   group('LiveTerritoryRepository.hexDetail', () {
     test('GETs territory/hex/<h3> with the id as a path segment', () async {
-      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexDetailJson));
-
-      await LiveTerritoryRepository(transport: transport).hexDetail(
-        '88195da49bfffff',
+      final transport = _FakeTransport(
+        respond: (_) => jsonDecode(_hexDetailJson),
       );
+
+      await LiveTerritoryRepository(
+        transport: transport,
+      ).hexDetail('88195da49bfffff');
 
       final call = transport.only;
       expect(call.verb, 'GET');
@@ -724,24 +768,29 @@ void main() {
       expect(call.query, isNull);
     });
 
-    test('reads a contested cell: total power, your share, flips, empty spots', () async {
-      final transport = _FakeTransport(respond: (_) => jsonDecode(_hexDetailJson));
+    test(
+      'reads a contested cell: total power, your share, flips, empty spots',
+      () async {
+        final transport = _FakeTransport(
+          respond: (_) => jsonDecode(_hexDetailJson),
+        );
 
-      final detail = await LiveTerritoryRepository(
-        transport: transport,
-      ).hexDetail('88195da49bfffff');
+        final detail = await LiveTerritoryRepository(
+          transport: transport,
+        ).hexDetail('88195da49bfffff');
 
-      expect(detail.h3, '88195da49bfffff');
-      expect(detail.ownerHandle, 'rival_kat');
-      // Contested: total (1240) is double this user's share (620). Both ints on the
-      // wire, both doubles here.
-      expect(detail.power, 1240.0);
-      expect(detail.yourPower, 620.0);
-      expect(detail.spots, isEmpty);
-      expect(detail.recentFlips, hasLength(2));
-      expect(detail.recentFlips.first.handle, 'rival_kat');
-      expect(detail.recentFlips.first.atMs, 1788700000000);
-    });
+        expect(detail.h3, '88195da49bfffff');
+        expect(detail.ownerHandle, 'rival_kat');
+        // Contested: total (1240) is double this user's share (620). Both ints on the
+        // wire, both doubles here.
+        expect(detail.power, 1240.0);
+        expect(detail.yourPower, 620.0);
+        expect(detail.spots, isEmpty);
+        expect(detail.recentFlips, hasLength(2));
+        expect(detail.recentFlips.first.handle, 'rival_kat');
+        expect(detail.recentFlips.first.atMs, 1788700000000);
+      },
+    );
 
     test('round-trips: fromJson(x).toJson() == x', () {
       final raw = jsonDecode(_hexDetailJson) as Map<String, Object?>;
@@ -772,9 +821,13 @@ void main() {
 
   group('LiveTerritoryRepository.leaderboard', () {
     test('GETs territory/leaderboard and reads the ranked rows', () async {
-      final transport = _FakeTransport(respond: (_) => jsonDecode(_leaderboardJson));
+      final transport = _FakeTransport(
+        respond: (_) => jsonDecode(_leaderboardJson),
+      );
 
-      final rows = await LiveTerritoryRepository(transport: transport).leaderboard();
+      final rows = await LiveTerritoryRepository(
+        transport: transport,
+      ).leaderboard();
 
       expect(transport.only.verb, 'GET');
       expect(transport.only.function, 'territory/leaderboard');

@@ -12,6 +12,11 @@ final profileProvider = FutureProvider<UserProfile>((ref) {
   return ref.watch(progressionRepositoryProvider).me();
 });
 
+/// Guest or signed in (and as whom). Invalidated after save / log in / log out.
+final accountProvider = FutureProvider<AccountState>((ref) {
+  return ref.watch(accountRepositoryProvider).current();
+});
+
 /// `GET /movements` — catalogue plus unlocked state and tier progress.
 final movementsProvider = FutureProvider<List<Movement>>((ref) {
   return ref.watch(progressionRepositoryProvider).movements();
