@@ -26,35 +26,10 @@ import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
+import 'package:reprush/features/territory/ui/basemap.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
-
-/// Esri "Dark Gray Canvas" basemap, split into its base and its labels-only
-/// reference layer so the hexes can sit between the two. A muted dark map lets
-/// the territory colours carry the screen (the standard OSM style is built for
-/// map editors: every feature, saturated, dense — and its servers' usage policy
-/// discourages apps). Keyless; attribution "Powered by Esri" is required and
-/// shown in the corner.
-///
-/// (CARTO's Dark Matter was the first choice but now answers every keyless
-/// request with an "API KEY REQUIRED" image — HTTP 200, so it fails silently.)
-const _esriCanvas =
-    'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas';
-const _basemapUrl =
-    '$_esriCanvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-const _labelsUrl =
-    '$_esriCanvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
-
-/// Pulls Esri's neutral greys toward the app's navy (surfaceDark) while
-/// keeping road/label contrast: each channel is a scaled copy of the tile's
-/// luminance plus a blue-leaning offset.
-const _navyTint = ColorFilter.matrix(<double>[
-  0.45, 0, 0, 0, 0, //
-  0, 0.50, 0, 0, 2, //
-  0, 0, 0.65, 0, 12, //
-  0, 0, 0, 1, 0, //
-]);
 
 const double _defaultZoom = 14.2;
 const double _focusZoom = 15.2;
@@ -210,7 +185,7 @@ class _MapViewState extends ConsumerState<_MapView>
           ),
           mapController: _mapController,
           children: [
-            _basemapLayer(_basemapUrl),
+            basemapLayer(context),
             AnimatedBuilder(
               animation: Listenable.merge([_pulse, _flash]),
               builder: (context, _) => PolygonLayer(
@@ -220,10 +195,6 @@ class _MapViewState extends ConsumerState<_MapView>
                 hitNotifier: _hitNotifier,
               ),
             ),
-            // Street and place names ABOVE the hex fills, so they stay legible
-            // over coloured territory. IgnorePointer: label tiles would
-            // otherwise swallow the taps meant for the hexes underneath.
-            IgnorePointer(child: _basemapLayer(_labelsUrl)),
             MarkerLayer(
               markers: [
                 for (final spot in widget.spots) _spotMarker(spot),
@@ -325,11 +296,11 @@ class _MapViewState extends ConsumerState<_MapView>
                   const SizedBox(width: RepRushTokens.spaceSm),
                   // Required attribution; wraps to two lines on narrow phones
                   // rather than pushing the legend off-screen.
-                  const Flexible(
+                  Flexible(
                     child: Text(
-                      'Powered by Esri\n© OpenStreetMap',
+                      basemapAttribution,
                       textAlign: TextAlign.end,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 9,
                         height: 1.2,
@@ -351,15 +322,6 @@ class _MapViewState extends ConsumerState<_MapView>
       ],
     );
   }
-
-  TileLayer _basemapLayer(String urlTemplate) => TileLayer(
-    urlTemplate: urlTemplate,
-    // The canvas basemap is published to z16; deeper zooms upscale it.
-    maxNativeZoom: 16,
-    userAgentPackageName: 'com.example.reprush',
-    tileBuilder: (context, tile, _) =>
-        ColorFiltered(colorFilter: _navyTint, child: tile),
-  );
 
   Polygon<HexCell> _polygonFor(HexCell cell, HexCell? current) {
     final unclaimed = cell.ownerHandle == null && !cell.yours;
