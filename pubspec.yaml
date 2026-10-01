@@ -34,7 +34,7 @@ dependencies:
   # State management — see docs/api-contract.md §state. Feature-scoped
   # providers; repositories wrap all API access; UI never calls a backend
   # client directly.
-  flutter_riverpod: ^3.0.3
+  flutter_riverpod: ^3.4.3
 
   # Capture (Track A): camera stream → on-device ML Kit pose landmarks.
   # camera is pinned to the 0.11.x line — 0.12.x requires Android SDK 24+,
@@ -53,14 +53,14 @@ dependencies:
   # the persistence is load-bearing: it is what keeps the guest account (A1)
   # alive across an app restart instead of burning another slot of the
   # 30-per-hour anonymous sign-in rate limit on every relaunch.
-  supabase_flutter: ^2.17.2
+  supabase_flutter: ^2.18.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^2.0.0
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
-  geolocator: ^14.0.3
+  geolocator: ^14.1.1
 
 dev_dependencies:
   flutter_test:
