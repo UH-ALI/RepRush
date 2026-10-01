@@ -14,6 +14,7 @@ import 'package:reprush/features/capture/pipeline/ema_filter.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/idle_monitor.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
+import 'package:reprush/features/capture/pipeline/presence_monitor.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
 import 'package:reprush/features/capture/pipeline/side_selector.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
@@ -38,6 +39,9 @@ class PipelineFrame {
     this.lostStreak = 0,
     this.calibrationRejection,
     this.idle = IdleStatus.active,
+    this.presence = PresenceStatus.present,
+    this.bodyMismatch = false,
+    this.torsoRatio,
   });
 
   final int repCount;
@@ -82,7 +86,30 @@ class PipelineFrame {
   /// Set-idle state: warning countdown (3, 2, 1) then expired. The
   /// controller saves the set on expiry. Always active while calibrating.
   final IdleStatus idle;
+
+  /// Body-presence state: absent warning, then the set ends once the
+  /// athlete has been gone past the flicker grace.
+  final PresenceStatus presence;
+
+  /// Sticky flag: the live torso size at rest differs from the calibrated
+  /// one (a different person or a moved camera). Flag only — it does not
+  /// end the set until validated on real recordings.
+  final bool bodyMismatch;
+
+  /// Median live/calibrated torso ratio (null until measurable); logged for
+  /// tuning the mismatch tolerance.
+  final double? torsoRatio;
+
+  /// Why the controller must end and save the set now, or null. Walking out
+  /// outranks idle: it is the integrity case, not a rest.
+  SetEndReason? get setEndReason {
+    if (presence.hasLeft) return SetEndReason.leftFrame;
+    if (idle.isExpired) return SetEndReason.idle;
+    return null;
+  }
 }
+
+enum SetEndReason { idle, leftFrame }
 
 /// Two-phase pipeline: CALIBRATING (collect rest samples) then COUNTING.
 /// The movement's [MovementConfig] supplies the joint chain, thresholds,
@@ -103,6 +130,8 @@ class RepPipeline {
   final CalibrationCapture _calibration;
   final FeedbackDebouncer _debouncer = FeedbackDebouncer();
   final SetIdleMonitor _idle = SetIdleMonitor();
+  final PresenceMonitor _presence = PresenceMonitor();
+  final BodyScaleMonitor _bodyScale = BodyScaleMonitor();
 
   RepMachine? _machine;
   bool _calibrating = true;
@@ -167,6 +196,13 @@ class RepPipeline {
               repCount: result?.repCount ?? repCount,
               timestampMs: frame.timestampMs,
             );
+      final presence = _calibrating || machine == null
+          ? PresenceStatus.present
+          : _presence.tick(
+              bodyVisible: false,
+              repCount: result?.repCount ?? repCount,
+              timestampMs: frame.timestampMs,
+            );
       final feedback = lost
           ? FeedbackSnapshot(
               level: FeedbackLevel.red,
@@ -202,6 +238,9 @@ class RepPipeline {
         lostStreak: _lostStreak,
         calibrationRejection: _lastRejection,
         idle: idle,
+        presence: presence,
+        bodyMismatch: _bodyScale.mismatch,
+        torsoRatio: _bodyScale.medianRatio,
       );
     }
 
@@ -276,6 +315,21 @@ class RepPipeline {
       repCount: result.repCount,
       timestampMs: frame.timestampMs,
     );
+    final presence = _presence.tick(
+      bodyVisible: true,
+      repCount: result.repCount,
+      timestampMs: frame.timestampMs,
+    );
+    // Identity consistency: torso length at rest vs calibration (flag only).
+    final sel = frame.landmarks['${selected.side}Shoulder'];
+    final selHip = frame.landmarks['${selected.side}Hip'];
+    _bodyScale.tick(
+      torsoPx: (sel != null && selHip != null)
+          ? _pointDistancePx(sel, selHip, frame.imageWidth, frame.imageHeight)
+          : null,
+      calibratedTorsoPx: _calibrationResult?.torsoLengthPx,
+      atRest: result.phase == RepPhase.rest,
+    );
     final feedback = _debouncer.update(
       evaluateFeedback(
         phase: result.phase,
@@ -303,6 +357,9 @@ class RepPipeline {
       lostStreak: _lostStreak,
       calibrationRejection: _lastRejection,
       idle: idle,
+      presence: presence,
+      bodyMismatch: _bodyScale.mismatch,
+      torsoRatio: _bodyScale.medianRatio,
     );
   }
 
@@ -343,6 +400,8 @@ class RepPipeline {
     _calibration.reset();
     _debouncer.reset();
     _idle.reset();
+    _presence.reset();
+    _bodyScale.reset();
     _lostStreak = 0;
     _currentSide = null;
     _calibrationResult = null;

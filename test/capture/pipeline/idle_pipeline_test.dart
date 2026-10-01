@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/features/capture/pipeline/idle_monitor.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
+import 'package:reprush/features/capture/pipeline/presence_monitor.dart';
 import 'package:reprush/features/capture/pipeline/rep_pipeline.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
 
@@ -79,19 +80,98 @@ void main() {
     },
   );
 
-  test('walking out of frame also expires the set', () {
+  test('walking out of frame ends the set within ~2 s, not via idle', () {
     final s = _afterSet(6);
     var t = s.t;
-    var stage = IdleStage.active;
-    for (var i = 0; i < 300; i++) {
+    final start = t;
+    PipelineFrame? f;
+    var sawWarning = false;
+    while (t - start < 5000) {
       // No landmarks at all -> tracking-lost path.
-      stage = s.p
-          .tick(LandmarkFrame(landmarks: const {}, timestampMs: t))
-          .idle
-          .stage;
+      f = s.p.tick(LandmarkFrame(landmarks: const {}, timestampMs: t));
+      sawWarning = sawWarning || f.presence.isAbsent;
+      if (f.setEndReason != null) break;
       t += 66;
     }
-    expect(stage, IdleStage.expired);
+    expect(f!.setEndReason, SetEndReason.leftFrame);
+    expect(sawWarning, isTrue);
+    expect(t - start, inInclusiveRange(1900, 2100));
+    expect(f.idle.isExpired, isFalse, reason: 'ended before the idle timer');
+    expect(s.p.repCount, 6, reason: 'reps counted so far are kept');
+  });
+
+  test('a dropout shorter than the grace does not end the set', () {
+    final s = _afterSet(6);
+    var t = s.t;
+    for (var i = 0; i < 15; i++) {
+      // ~1 s of lost frames.
+      final f = s.p.tick(LandmarkFrame(landmarks: const {}, timestampMs: t));
+      expect(f.setEndReason, isNull);
+      t += 66;
+    }
+    final back = s.p.tick(_frame(175, t));
+    expect(back.presence.stage, PresenceStage.present);
+    expect(back.setEndReason, isNull);
+  });
+
+  group('body-size consistency (flag only)', () {
+    LandmarkFrame withTorso(double torsoPx, int t) {
+      // Shift everything into the image: the selector rejects landmarks
+      // outside the (1000x1000) bounds, and the base frame sits at the origin.
+      const shift = 300.0;
+      final base = _frame(175, t);
+      final lm = {
+        for (final e in base.landmarks.entries)
+          e.key: (
+            x: e.value.x + shift,
+            y: e.value.y + shift,
+            likelihood: e.value.likelihood,
+          ),
+      };
+      for (final side in const ['left', 'right']) {
+        lm['${side}Shoulder'] = (
+          x: 100.0 + shift,
+          y: shift - torsoPx,
+          likelihood: 0.9,
+        );
+      }
+      return LandmarkFrame(
+        landmarks: lm,
+        timestampMs: t,
+        imageWidth: 1000,
+        imageHeight: 1000,
+      );
+    }
+
+    RepPipeline calibrated(double torsoPx) {
+      final p = RepPipeline(squatConfig);
+      for (var i = 0; i < 15; i++) {
+        p.tick(withTorso(torsoPx, i * 66));
+      }
+      expect(p.finalizeCalibration(), isTrue);
+      expect(p.calibration!.torsoLengthPx, closeTo(torsoPx, 0.5));
+      return p;
+    }
+
+    test('same torso size is not flagged', () {
+      final p = calibrated(200);
+      PipelineFrame? f;
+      for (var i = 0; i < 20; i++) {
+        f = p.tick(withTorso(204, 2000 + i * 66));
+      }
+      expect(f!.bodyMismatch, isFalse);
+      expect(f.torsoRatio, closeTo(1.02, 0.01));
+    });
+
+    test('a visibly smaller body at rest is flagged but the set continues', () {
+      final p = calibrated(200);
+      PipelineFrame? f;
+      for (var i = 0; i < 20; i++) {
+        f = p.tick(withTorso(140, 2000 + i * 66));
+      }
+      expect(f!.bodyMismatch, isTrue);
+      expect(f.setEndReason, isNull, reason: 'flag only, never ends the set');
+    });
   });
 
   test('resuming during the warning cancels it and counting continues', () {
