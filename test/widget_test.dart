@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reprush/app/app.dart';
@@ -149,6 +150,27 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('map pills: owned count in full, hex status flush right', (
+      tester,
+    ) async {
+      usePhone(tester);
+      await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
+      await settle(tester);
+
+      final owned = tester.renderObject<RenderParagraph>(
+        find.text('1 OWNED'),
+      );
+      expect(owned.didExceedMaxLines, isFalse, reason: 'shown as "1 OW…"');
+
+      // The status pill's right edge lines up with the zoom controls below
+      // it (both inset spaceMd = 16 from the 360-wide screen's right edge).
+      final status = find.ancestor(
+        of: find.textContaining(' HEX'),
+        matching: find.byType(DecoratedBox),
+      );
+      expect(tester.getTopRight(status.first).dx, closeTo(360 - 16, 0.5));
+    });
 
     testWidgets('intro renders without overflow', (tester) async {
       usePhone(tester);

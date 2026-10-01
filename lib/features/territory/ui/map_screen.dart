@@ -234,20 +234,22 @@ class _MapViewState extends ConsumerState<_MapView>
           top: RepRushTokens.spaceMd,
           child: Row(
             children: [
-              Flexible(
-                child: _MapPill(
-                  icon: Icons.hexagon,
-                  text: '$yours OWNED',
-                  color: Ownership.yours.color,
-                ),
+              // Short and fixed-length: always shown in full.
+              _MapPill(
+                icon: Icons.hexagon,
+                text: '$yours OWNED',
+                color: Ownership.yours.color,
               ),
               const SizedBox(width: RepRushTokens.spaceSm),
-              const Spacer(),
-              Flexible(
-                flex: 2,
-                child: _CurrentHexPill(
-                  current: current,
-                  onTap: current == null ? null : () => _openSheet(current),
+              // Takes the rest of the row and sits flush right, above the zoom
+              // controls; it is the one that ellipsises if space runs out.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _CurrentHexPill(
+                    current: current,
+                    onTap: current == null ? null : () => _openSheet(current),
+                  ),
                 ),
               ),
             ],
