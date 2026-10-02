@@ -16,6 +16,7 @@ import type { Evidence } from "./evidence/schema.ts";
 import { ErrorCode, HttpError } from "./responses.ts";
 import { MAX_SESSIONS_PER_DAY } from "./scoring/caps.ts";
 import type { Contribution, MaterialisedOwner } from "./territory.ts";
+import type { DuelRow, DuelSet, StoredStatus } from "./duels.ts";
 import type { FlagPayload, SetPayload } from "./outcome.ts";
 import { likeLiteral } from "./handles.ts";
 import { SESSION_EXPIRY_MS, type SessionRow } from "./validation/session.ts";
@@ -665,6 +666,296 @@ export async function leaderboardRows(client: Db, board: Board): Promise<Leaderb
     handle: handles.get(id) ?? "unknown",
     hexesHeld,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Presence (POST /presence — migration 0009)
+// ---------------------------------------------------------------------------
+
+export interface PresenceRow {
+  userId: string;
+  board: Board;
+  h3: string;
+  updatedAtMs: number;
+}
+
+function mapPresence(row: { user_id: string; board: string; h3: string; updated_at: string }) {
+  return {
+    userId: row.user_id,
+    board: row.board as Board,
+    h3: row.h3,
+    updatedAtMs: Date.parse(row.updated_at),
+  } satisfies PresenceRow;
+}
+
+/** One heartbeat: you are in [h3] as of now. Only the cell is stored (N7). */
+export async function upsertPresence(
+  client: Db,
+  input: { userId: string; board: Board; h3: string },
+): Promise<void> {
+  const { error } = await client.from("player_presence").upsert({
+    user_id: input.userId,
+    board: input.board,
+    h3: input.h3,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) failDb("recording presence", error);
+}
+
+/** Going hidden: the row goes, rather than waiting out the TTL. */
+export async function deletePresence(client: Db, userId: string): Promise<void> {
+  const { error } = await client.from("player_presence").delete().eq("user_id", userId);
+  if (error) failDb("clearing presence", error);
+}
+
+export async function loadPresence(client: Db, userId: string): Promise<PresenceRow | null> {
+  const { data, error } = await client
+    .from("player_presence")
+    .select("user_id, board, h3, updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) failDb("reading presence", error);
+  return data === null ? null : mapPresence(data);
+}
+
+/** Everyone on [board] beaten since [sinceMs] in any of [cells], except [excludeUserId]. */
+export async function presenceIn(
+  client: Db,
+  board: Board,
+  cells: readonly string[],
+  sinceMs: number,
+  excludeUserId: string,
+): Promise<PresenceRow[]> {
+  const { data, error } = await client
+    .from("player_presence")
+    .select("user_id, board, h3, updated_at")
+    .eq("board", board)
+    .in("h3", [...cells])
+    .gt("updated_at", new Date(sinceMs).toISOString())
+    .neq("user_id", excludeUserId)
+    .limit(50);
+  if (error) failDb("reading nearby presence", error);
+  return (data ?? []).map(mapPresence);
+}
+
+export interface PlayerStats {
+  handle: string;
+  /** round(lifetime RepScore) + claimed challenge XP — the same sum as GET /me. */
+  xp: number;
+  hexesHeld: number;
+}
+
+/** Name, XP and hexes held for several athletes in four queries, not 4×N. */
+export async function playerStats(
+  client: Db,
+  userIds: readonly string[],
+  board: Board,
+): Promise<Map<string, PlayerStats>> {
+  const stats = new Map<string, PlayerStats>();
+  if (userIds.length === 0) return stats;
+  const ids = [...userIds];
+  const [handles, scores, claims, held] = await Promise.all([
+    loadHandles(client, ids),
+    client.from("user_lifetime_score").select("user_id, lifetime_score").in("user_id", ids),
+    client.from("challenge_claims").select("user_id, xp_awarded").in("user_id", ids),
+    client.from("hex_ownership").select("owner_id").eq("board", board).in("owner_id", ids),
+  ]);
+  if (scores.error) failDb("reading lifetime scores", scores.error);
+  if (claims.error) failDb("reading challenge XP", claims.error);
+  if (held.error) failDb("reading hexes held", held.error);
+  for (const id of ids) {
+    stats.set(id, { handle: handles.get(id) ?? "athlete", xp: 0, hexesHeld: 0 });
+  }
+  for (const row of (scores.data ?? []) as { user_id: string; lifetime_score: number | string }[]) {
+    const s = stats.get(row.user_id);
+    if (s) s.xp += Math.round(num(row.lifetime_score, "lifetime_score"));
+  }
+  for (const row of (claims.data ?? []) as { user_id: string; xp_awarded: number | string }[]) {
+    const s = stats.get(row.user_id);
+    if (s) s.xp += num(row.xp_awarded, "xp_awarded");
+  }
+  for (const row of (held.data ?? []) as { owner_id: string }[]) {
+    const s = stats.get(row.owner_id);
+    if (s) s.hexesHeld += 1;
+  }
+  return stats;
+}
+
+// ---------------------------------------------------------------------------
+// Duels (GET/POST /duels — migration 0009)
+// ---------------------------------------------------------------------------
+
+interface DuelDbRow {
+  id: string;
+  board: string;
+  challenger_id: string;
+  opponent_id: string;
+  movement_id: string;
+  status: string;
+  created_at: string;
+  respond_by: string;
+  accepted_at: string | null;
+  ends_at: string | null;
+}
+
+// One literal, not a concatenation: supabase-js parses the select string at
+// the type level, and a computed `string` defeats that.
+const DUEL_COLUMNS =
+  "id, board, challenger_id, opponent_id, movement_id, status, created_at, respond_by, accepted_at, ends_at";
+
+export interface StoredDuel extends DuelRow {
+  board: Board;
+}
+
+function mapDuel(row: DuelDbRow): StoredDuel {
+  return {
+    id: row.id,
+    board: row.board as Board,
+    challengerId: row.challenger_id,
+    opponentId: row.opponent_id,
+    movementId: row.movement_id,
+    status: row.status as StoredStatus,
+    createdAtMs: Date.parse(row.created_at),
+    respondByMs: Date.parse(row.respond_by),
+    acceptedAtMs: row.accepted_at === null ? null : Date.parse(row.accepted_at),
+    endsAtMs: row.ends_at === null ? null : Date.parse(row.ends_at),
+  };
+}
+
+export async function insertDuel(
+  client: Db,
+  input: {
+    board: Board;
+    challengerId: string;
+    opponentId: string;
+    movementId: string;
+    respondByMs: number;
+  },
+): Promise<StoredDuel> {
+  const { data, error } = await client
+    .from("duels")
+    .insert({
+      board: input.board,
+      challenger_id: input.challengerId,
+      opponent_id: input.opponentId,
+      movement_id: input.movementId,
+      respond_by: new Date(input.respondByMs).toISOString(),
+    })
+    .select(DUEL_COLUMNS)
+    .single();
+  if (error) failDb("creating the duel", error);
+  return mapDuel(data as unknown as DuelDbRow);
+}
+
+export async function loadDuel(client: Db, id: string): Promise<StoredDuel | null> {
+  const { data, error } = await client.from("duels").select(DUEL_COLUMNS).eq("id", id)
+    .maybeSingle();
+  if (error) failDb("reading the duel", error);
+  return data === null ? null : mapDuel(data as unknown as DuelDbRow);
+}
+
+/** [userId]'s duels on either side created since [sinceMs], newest first. */
+export async function recentDuels(
+  client: Db,
+  userId: string,
+  sinceMs: number,
+): Promise<StoredDuel[]> {
+  const { data, error } = await client
+    .from("duels")
+    .select(DUEL_COLUMNS)
+    .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+    .gt("created_at", new Date(sinceMs).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) failDb("reading duels", error);
+  return ((data ?? []) as unknown as DuelDbRow[]).map(mapDuel);
+}
+
+/**
+ * Answers a pending duel. Guarded on `status = 'pending'` and the deadline in
+ * the UPDATE itself, so a double tap or a late answer changes nothing and
+ * returns null rather than reopening a lapsed challenge.
+ */
+export async function answerDuel(
+  client: Db,
+  id: string,
+  answer: { accept: true; acceptedAtMs: number; endsAtMs: number } | { accept: false },
+  nowMs: number,
+): Promise<StoredDuel | null> {
+  const patch = answer.accept
+    ? {
+      status: "accepted",
+      accepted_at: new Date(answer.acceptedAtMs).toISOString(),
+      ends_at: new Date(answer.endsAtMs).toISOString(),
+    }
+    : { status: "declined" };
+  const { data, error } = await client
+    .from("duels")
+    .update(patch)
+    .eq("id", id)
+    .eq("status", "pending")
+    .gt("respond_by", new Date(nowMs).toISOString())
+    .select(DUEL_COLUMNS)
+    .maybeSingle();
+  if (error) failDb("answering the duel", error);
+  return data === null ? null : mapDuel(data as unknown as DuelDbRow);
+}
+
+/** Scored sets of [movementId] by [userIds] on [board] submitted in [fromMs, toMs). */
+export async function duelSets(
+  client: Db,
+  board: Board,
+  userIds: readonly string[],
+  movementId: string,
+  fromMs: number,
+  toMs: number,
+): Promise<DuelSet[]> {
+  const { data, error } = await client
+    .from("duel_sets")
+    .select("user_id, movement_id, rep_count, submitted_at_ms")
+    .eq("board", board)
+    .eq("movement_id", movementId)
+    .in("user_id", [...userIds])
+    .gte("submitted_at_ms", fromMs)
+    .lt("submitted_at_ms", toMs)
+    .order("submitted_at_ms", { ascending: true });
+  if (error) failDb("reading duel sets", error);
+  const rows = (data ?? []) as {
+    user_id: string;
+    movement_id: string;
+    rep_count: number | string;
+    submitted_at_ms: number | string;
+  }[];
+  return rows.map((row) => ({
+    userId: row.user_id,
+    movementId: row.movement_id,
+    repCount: num(row.rep_count, "rep_count"),
+    submittedAtMs: num(row.submitted_at_ms, "submitted_at_ms"),
+  }));
+}
+
+/** Which of [templateIds] [userId] has already claimed. */
+export async function claimedTemplates(
+  client: Db,
+  userId: string,
+  templateIds: readonly string[],
+): Promise<Set<string>> {
+  if (templateIds.length === 0) return new Set();
+  const { data, error } = await client
+    .from("challenge_claims")
+    .select("template_id")
+    .eq("user_id", userId)
+    .in("template_id", [...templateIds]);
+  if (error) failDb("reading claims", error);
+  return new Set(((data ?? []) as { template_id: string }[]).map((row) => row.template_id));
+}
+
+/** True when [movementId] is in the catalogue. */
+export async function movementExists(client: Db, movementId: string): Promise<boolean> {
+  const { data, error } = await client.from("movements").select("id").eq("id", movementId)
+    .maybeSingle();
+  if (error) failDb("reading the movement", error);
+  return data !== null;
 }
 
 // ---------------------------------------------------------------------------

@@ -47,14 +47,13 @@ const demoVenueLocation = SessionLocation(
 /// map invalidates it after a long move (see [reanchorDistanceM]). A weak fix
 /// is accepted — an approximate map beats no map.
 final territoryLocationProvider = FutureProvider<SessionLocation>((ref) {
-  final config = ref.watch(backendConfigProvider);
-  if (!config.isLive) return Future.value(demoVenueLocation);
+  if (!ref.watch(isLiveProvider)) return Future.value(demoVenueLocation);
   return readDeviceLocation(requireAccuracy: false);
 });
 
 /// The live position feed behind the "you are here" marker.
 final currentLocationProvider = StreamProvider<SessionLocation>((ref) {
-  if (!ref.watch(backendConfigProvider).isLive) {
+  if (!ref.watch(isLiveProvider)) {
     return Stream.value(demoVenueLocation);
   }
   return watchDeviceLocation();

@@ -4,7 +4,7 @@
 ///
 /// Deno-only: `npm:` specifier. Nothing in the pure tree imports this.
 
-import { cellToBoundary, latLngToCell, polygonToCells } from "npm:h3-js@4";
+import { cellToBoundary, cellToLatLng, gridDisk, latLngToCell, polygonToCells } from "npm:h3-js@4";
 
 /**
  * Resolution 8 — average hexagon area ~0.737 km², the number quoted throughout
@@ -72,4 +72,15 @@ export function cellsCoveringBBox(
  */
 export function hexBoundary(h3: string): LatLngLoop {
   return cellToBoundary(h3) as LatLngLoop;
+}
+
+/** Every cell within [k] rings of [h3], [h3] included — "nearby" for presence. */
+export function hexRing(h3: string, k: number): string[] {
+  return gridDisk(h3, k);
+}
+
+/** A cell's centre — where presence draws the athletes standing in it. */
+export function hexCentre(h3: string): { lat: number; lng: number } {
+  const [lat, lng] = cellToLatLng(h3);
+  return { lat, lng };
 }

@@ -19,8 +19,9 @@ String describeError(Object error) {
     ApiException e => _describeApi(e),
     LocationException e => e.message,
     AccountException e => e.message,
-    FormatException() || TypeError() || StateError() =>
-      'Something went wrong on our side. Please try again.',
+    FormatException() ||
+    TypeError() ||
+    StateError() => 'Something went wrong on our side. Please try again.',
     // Exceptions the app throws on purpose (e.g. TrainingBlocked) carry their
     // own athlete-facing copy in toString().
     _ => error.toString(),
@@ -43,8 +44,7 @@ String _describeApi(ApiException e) => switch (e.code) {
   ApiErrorCode.unknownSession ||
   ApiErrorCode.sessionAlreadyUsed =>
     'That workout session has ended. Start a new one to keep training.',
-  ApiErrorCode.timelineOutOfWindow ||
-  ApiErrorCode.configVersionMismatch =>
+  ApiErrorCode.timelineOutOfWindow || ApiErrorCode.configVersionMismatch =>
     "We couldn't verify the timing of that set. Start a new session and go "
         'again.',
   ApiErrorCode.sessionContextMismatch =>
@@ -62,6 +62,15 @@ String _describeApi(ApiException e) => switch (e.code) {
   ApiErrorCode.invalidHandle =>
     'Use 3–20 letters or numbers. Spaces, _ . and - are fine in between.',
   ApiErrorCode.handleTaken => 'Someone already goes by that name. Try another.',
+  ApiErrorCode.notVisible =>
+    'Go visible on the map first — duels are between people who can see '
+        'each other.',
+  ApiErrorCode.notNearby =>
+    "They've moved on or gone hidden. Find someone else nearby.",
+  ApiErrorCode.duelAlreadyOpen =>
+    'You already have a duel going with them. Finish that one first.',
+  ApiErrorCode.unknownDuel => 'That duel has already ended.',
+  ApiErrorCode.duelClosed => 'That duel has moved on. Pull down to refresh.',
   _ when e.statusCode == 0 =>
     "Can't reach RepRush right now. Check your connection and try again.",
   _ => 'Something went wrong. Please try again.',

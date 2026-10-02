@@ -55,7 +55,7 @@ You need Flutter (Dart SDK ^3.12) and a **physical Android or iOS phone**. Camer
 flutter pub get
 ```
 
-**Offline (stub mode):** `flutter run` on its own uses built-in sample data, so you can explore the UI without a backend.
+**Offline (demo only):** `flutter run` on its own uses built-in sample data, so you can explore the UI without a backend.
 
 **Live:** pass your Supabase project:
 
@@ -65,6 +65,8 @@ flutter run \
   --dart-define=REPRUSH_SUPABASE_URL=https://<project-ref>.supabase.co \
   --dart-define=REPRUSH_SUPABASE_ANON_KEY=<anon-key>
 ```
+
+A build that carries a key can switch between **Live** and **Demo** in the app: **Profile → Game world**. The choice is remembered across restarts. `REPRUSH_API` only sets which one a fresh install opens in. Demo is a scripted world at the demo venue, with practice rivals to duel, and nothing in it touches real territory. The map shows a **DEMO** tag while it's on.
 
 Optional flags:
 
@@ -77,7 +79,7 @@ Pointing at a **local** stack instead? The default URL is `127.0.0.1`, which a p
 
 ### Backend (Supabase)
 
-The backend lives in [`supabase/`](supabase/): Postgres migrations and Deno Edge Functions (`session-start`, `session-submit`, `territory`, `me`, `movements`, `challenges`).
+The backend lives in [`supabase/`](supabase/): Postgres migrations and Deno Edge Functions (`session-start`, `session-submit`, `territory`, `me`, `movements`, `challenges`, `presence`, `duels`).
 
 ```bash
 npx supabase start                                    # local stack (Docker)
@@ -98,6 +100,7 @@ deno task seed     # populate the board with rival athletes and territory
 deno task reset    # wipe session data back to a clean board
 deno task user     # mint a dev account token for scripted submits
 deno task submit squat_20_clean   # submit a recorded set end-to-end
+SUPABASE_ANON_KEY=<key> deno task nearby   # two fresh athletes: see each other, duel, claim
 ```
 
 ### Checks

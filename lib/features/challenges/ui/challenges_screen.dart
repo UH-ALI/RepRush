@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/features/challenges/data/challenges_providers.dart';
+import 'package:reprush/features/challenges/data/duels_providers.dart';
+import 'package:reprush/features/challenges/ui/duel_widgets.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
@@ -30,6 +32,7 @@ class ChallengesScreen extends ConsumerWidget {
         onRefresh: () async {
           ref
             ..invalidate(dailyChallengeProvider)
+            ..invalidate(duelsProvider)
             ..invalidate(leaderboardProvider);
           await ref.read(leaderboardProvider.future);
         },
@@ -51,6 +54,8 @@ class ChallengesScreen extends ConsumerWidget {
               ),
               data: (daily) => _DailyChallengeCard(challenge: daily),
             ),
+            const SizedBox(height: RepRushTokens.spaceLg),
+            const DuelsSection(),
             const SizedBox(height: RepRushTokens.spaceLg),
             Text('Territory leaderboard', style: RepRushTokens.sectionTitle),
             const SizedBox(height: RepRushTokens.spaceSm),

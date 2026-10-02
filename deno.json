@@ -47,6 +47,7 @@
     "user:node": "node tool/dev_user.ts",
     "reset": "deno run --allow-net --allow-env --allow-read tool/reset_demo.ts",
     "reset:node": "node tool/reset_demo.ts",
-    "seed": "deno run --allow-net --allow-env --allow-read tool/seed_rivals.ts"
+    "seed": "deno run --allow-net --allow-env --allow-read tool/seed_rivals.ts",
+    "nearby": "deno run --allow-net --allow-env --allow-read tool/nearby_smoke.ts"
   }
 }

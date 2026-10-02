@@ -170,3 +170,75 @@ class LiveChallengesRepository implements ChallengesRepository {
     return ChallengeClaim.fromJson(body);
   }
 }
+
+/// `POST /presence`, `POST /presence/off` — one deployed `presence` function.
+/// "Off" is a POST rather than a DELETE because the functions' CORS policy
+/// allows GET and POST only.
+class LivePresenceRepository implements PresenceRepository {
+  const LivePresenceRepository({required this.transport});
+
+  /// Public for the same reason as [LiveSessionRepository.transport].
+  final ApiTransport transport;
+
+  /// The fix is sent so the server can place you in a hex; it stores the hex
+  /// and drops the coordinates (N7).
+  @override
+  Future<List<NearbyPlayer>> heartbeat(SessionLocation location) async {
+    final body = await transport.post('presence', <String, Object?>{
+      'location': location.toJson(),
+    });
+    return NearbyPlayer.listFromJson(body);
+  }
+
+  @override
+  Future<void> goInvisible() async {
+    await transport.post('presence/off', const <String, Object?>{});
+  }
+}
+
+/// `GET /duels` and the four POST routes — one deployed `duels` function,
+/// dispatched on the path tail like `territory`.
+class LiveDuelsRepository implements DuelsRepository {
+  const LiveDuelsRepository({required this.transport});
+
+  /// Public for the same reason as [LiveSessionRepository.transport].
+  final ApiTransport transport;
+
+  /// Scores are derived server-side from verified sets on every read; nothing
+  /// the client counted contributes.
+  @override
+  Future<List<Duel>> list() async {
+    final body = await transport.get('duels');
+    return Duel.listFromJson(body);
+  }
+
+  @override
+  Future<Duel> challenge({
+    required String opponentId,
+    required String movementId,
+  }) async {
+    final body = await transport.post('duels', <String, Object?>{
+      'opponentId': opponentId,
+      'movementId': movementId,
+    });
+    return Duel.fromJson(body);
+  }
+
+  @override
+  Future<Duel> respond(String duelId, {required bool accept}) async {
+    final body = await transport.post(
+      'duels/$duelId/${accept ? 'accept' : 'decline'}',
+      const <String, Object?>{},
+    );
+    return Duel.fromJson(body);
+  }
+
+  @override
+  Future<ChallengeClaim> claim(String duelId) async {
+    final body = await transport.post(
+      'duels/$duelId/claim',
+      const <String, Object?>{},
+    );
+    return ChallengeClaim.fromJson(body);
+  }
+}

@@ -10,9 +10,12 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/api_providers.dart';
+import 'package:reprush/core/api/stub/stub_repositories.dart'
+    show StubDuelsRepository, StubLedger;
 import 'package:reprush/core/location/geo.dart';
 import 'package:reprush/core/location/location.dart';
 import 'package:reprush/features/challenges/data/challenges_providers.dart';
+import 'package:reprush/features/challenges/data/duels_providers.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
@@ -34,6 +37,8 @@ class TrainingBlocked implements Exception {
 class ActiveSessionController extends Notifier<SessionStart?> {
   @override
   SessionStart? build() {
+    // A session belongs to one backend: switching live ↔ demo drops it.
+    ref.watch(isLiveProvider);
     _startLocation = null;
     return null;
   }
@@ -112,7 +117,13 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     final result = await ref.read(sessionRepositoryProvider).submit(evidence);
     state = null; // one-shot: submitting consumes the session (I2).
     _startLocation = null;
+    // A stub duel scores the set the server just accepted — the stand-in for
+    // the live `duels` route reading set_records.
+    if (ref.read(duelsRepositoryProvider) is StubDuelsRepository) {
+      StubLedger.recordEvidence(evidence);
+    }
     ref
+      ..invalidate(duelsProvider)
       ..invalidate(hexesProvider)
       ..invalidate(leaderboardProvider)
       ..invalidate(profileProvider)
@@ -131,6 +142,6 @@ final activeSessionProvider =
 /// place the stub map is drawn around — so the hex gate is consistent there
 /// too; live mode takes a fresh device fix that must pass the 50 m gate.
 Future<SessionLocation> readSessionLocation(Ref ref) async {
-  if (!ref.read(backendConfigProvider).isLive) return demoVenueLocation;
+  if (!ref.read(isLiveProvider)) return demoVenueLocation;
   return readDeviceLocation();
 }

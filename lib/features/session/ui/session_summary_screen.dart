@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/app/shell_providers.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/features/challenges/ui/duel_widgets.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
@@ -88,6 +89,7 @@ class SessionSummaryScreen extends ConsumerWidget {
           ],
           const SizedBox(height: RepRushTokens.spaceMd),
           _TerritoryCard(hex: hex),
+          SetDuelCard(movementId: movementId),
           if (result.prs.isNotEmpty) ...[
             const SizedBox(height: RepRushTokens.spaceMd),
             for (final pr in result.prs)

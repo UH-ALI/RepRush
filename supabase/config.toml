@@ -78,3 +78,9 @@ verify_jwt = false
 
 [functions.challenges]
 verify_jwt = false
+
+[functions.presence]
+verify_jwt = false
+
+[functions.duels]
+verify_jwt = false

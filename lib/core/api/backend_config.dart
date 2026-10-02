@@ -51,6 +51,11 @@ enum ApiMode {
       'REPRUSH_API="$raw" is not a mode. Pass stub or live.',
     ),
   };
+
+  /// For values this app wrote itself (the saved in-app choice): an unknown or
+  /// missing value is null, not an error — it falls back to the build default.
+  static ApiMode? tryParse(String? raw) =>
+      raw == null ? null : ApiMode.values.asNameMap()[raw];
 }
 
 @immutable
@@ -86,6 +91,12 @@ class BackendConfig {
   final String? devPassword;
 
   bool get isLive => mode == ApiMode.live;
+
+  /// True when this build carries what a live backend needs, so the in-app
+  /// switch may offer Live even when the build's default [mode] is the demo.
+  bool get canGoLive =>
+      anonKey.isNotEmpty &&
+      (supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://'));
 
   /// Builds a config from strings that have already been read, validating as it
   /// goes.

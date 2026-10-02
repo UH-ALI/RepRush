@@ -92,6 +92,39 @@ abstract interface class ChallengesRepository {
   Future<ChallengeClaim> claimDaily();
 }
 
+/// `POST /presence`, `POST /presence/off` — opt-in visibility to nearby
+/// athletes. The server keeps only the hex a heartbeat fell in, never the fix.
+abstract interface class PresenceRepository {
+  /// Marks you visible in the hex containing [location] for the next couple of
+  /// minutes and returns the other visible athletes around it. Visibility is
+  /// reciprocal: only a visible athlete is shown anyone. Throws
+  /// `GPS_TOO_INACCURATE` or `MOCKED_LOCATION_REJECTED`.
+  Future<List<NearbyPlayer>> heartbeat(SessionLocation location);
+
+  /// Removes you from everyone's map at once, rather than at the next expiry.
+  Future<void> goInvisible();
+}
+
+/// `GET /duels`, `POST /duels`, `POST /duels/:id/accept|decline|claim`.
+/// One set each, most verified reps wins; the reward is capped XP, never
+/// territory power.
+abstract interface class DuelsRepository {
+  /// Your incoming, open and recently finished duels, newest first.
+  Future<List<Duel>> list();
+
+  /// Throws `NOT_VISIBLE`, `NOT_NEARBY` or `DUEL_ALREADY_OPEN`.
+  Future<Duel> challenge({
+    required String opponentId,
+    required String movementId,
+  });
+
+  /// Answers an incoming challenge. Throws `UNKNOWN_DUEL` or `DUEL_CLOSED`.
+  Future<Duel> respond(String duelId, {required bool accept});
+
+  /// Throws `DUEL_CLOSED` (not finished) or `ALREADY_CLAIMED`.
+  Future<ChallengeClaim> claim(String duelId);
+}
+
 /// Supabase Auth — not an Edge Function, so it sits beside the endpoint
 /// register rather than in it. Every method throws [AccountException] with
 /// athlete-facing copy.

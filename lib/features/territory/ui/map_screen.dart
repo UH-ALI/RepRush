@@ -18,10 +18,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:reprush/app/mode_switch.dart';
 import 'package:reprush/app/shell_providers.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart' show DemoVenue;
 import 'package:reprush/core/location/geo.dart';
+import 'package:reprush/features/challenges/ui/duel_widgets.dart';
+import 'package:reprush/features/presence/data/presence_providers.dart';
+import 'package:reprush/features/presence/ui/presence_ui.dart';
 import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
@@ -43,7 +47,10 @@ class MapScreen extends ConsumerWidget {
     final hexes = ref.watch(hexesProvider);
     final spots = ref.watch(nearbySpotsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Territory')),
+      appBar: AppBar(
+        title: const Text('Territory'),
+        actions: const [DemoBadge()],
+      ),
       // skipLoadingOnReload: re-anchoring after a long walk swaps the grid in
       // place rather than blanking the whole map behind a spinner.
       body: location.when(
@@ -157,6 +164,14 @@ class _MapViewState extends ConsumerState<_MapView>
 
     final here = ref.watch(hereProvider) ?? widget.location;
     final current = ref.watch(currentHexProvider);
+    final visible = ref.watch(presenceVisibleProvider).value ?? false;
+    final players = ref.watch(nearbyPlayersProvider).value ?? const [];
+    // One marker per hex: presence is hex-level, so athletes sharing a hex
+    // share a spot on the map.
+    final playersByHex = <String, List<NearbyPlayer>>{};
+    for (final player in players) {
+      (playersByHex[player.h3] ??= []).add(player);
+    }
     final cells = widget.cells;
     final yours = cells.where((c) => c.yours).length;
     final rivals = cells.where((c) => !c.yours && c.ownerHandle != null).length;
@@ -198,6 +213,8 @@ class _MapViewState extends ConsumerState<_MapView>
             MarkerLayer(
               markers: [
                 for (final spot in widget.spots) _spotMarker(spot),
+                for (final group in playersByHex.values)
+                  _playersMarker(group, here),
                 Marker(
                   point: LatLng(here.lat, here.lng),
                   width: 52,
@@ -239,6 +256,14 @@ class _MapViewState extends ConsumerState<_MapView>
                 color: Ownership.yours.color,
               ),
               const SizedBox(width: RepRushTokens.spaceSm),
+              // The opt-in to nearby play: hidden by default, and while
+              // visible it says how many others are around.
+              _PresencePill(
+                visible: visible,
+                count: players.length,
+                onTap: () => showVisibilitySheet(context),
+              ),
+              const SizedBox(width: RepRushTokens.spaceSm),
               // Takes the rest of the row and sits flush right, above the zoom
               // controls; it is the one that ellipsises if space runs out.
               Expanded(
@@ -276,6 +301,7 @@ class _MapViewState extends ConsumerState<_MapView>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const MapDuelBanner(),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -387,6 +413,50 @@ class _MapViewState extends ConsumerState<_MapView>
       ),
     ),
   );
+
+  /// Athletes in one hex, drawn at its centre. Nudged off the "you are here"
+  /// marker when they share your hex, so neither hides the other.
+  Marker _playersMarker(List<NearbyPlayer> group, SessionLocation here) {
+    final centre = group.first.centre;
+    final onYou = distanceM(here.lat, here.lng, centre.lat, centre.lng) < 80;
+    return Marker(
+      point: LatLng(onYou ? centre.lat - .0008 : centre.lat, centre.lng),
+      width: 50,
+      height: 50,
+      child: GestureDetector(
+        onTap: () => showPlayersSheet(context, group),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            PlayerAvatar(handle: group.first.handle),
+            if (group.length > 1)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Text(
+                      '+${group.length - 1}',
+                      style: const TextStyle(
+                        color: playerColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _onHexTap() {
     final hit = _hitNotifier.value;
@@ -802,6 +872,68 @@ class _MapPill extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The nearby-play switch in the map's top row: an eye when hidden, the
+/// number of athletes around you when visible. Icon-sized so the owned count
+/// and hex status still fit on a narrow phone.
+class _PresencePill extends StatelessWidget {
+  const _PresencePill({
+    required this.visible,
+    required this.count,
+    required this.onTap,
+  });
+
+  final bool visible;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = visible ? playerColor : Colors.white70;
+    return Semantics(
+      button: true,
+      label: visible
+          ? 'Visible to nearby players, $count around you'
+          : 'Hidden from nearby players',
+      child: GestureDetector(
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: RepRushTokens.chrome,
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: color.withValues(alpha: .55)),
+            boxShadow: RepRushTokens.cardShadow,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  visible ? Icons.people_alt : Icons.visibility_off,
+                  size: 16,
+                  color: color,
+                ),
+                if (visible) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      fontFamily: RepRushTokens.displayFont,
+                      color: color,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// A compact legend entry — icon + label + count (N9: never colour alone).

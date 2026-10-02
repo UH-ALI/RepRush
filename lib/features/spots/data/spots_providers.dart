@@ -15,7 +15,7 @@ import 'package:reprush/models/models.dart';
 /// fabricated venue spots drawn next to real territory. Stub: the seeded venue
 /// spots around the demo location.
 final nearbySpotsProvider = FutureProvider<List<SpotSummary>>((ref) async {
-  if (ref.watch(backendConfigProvider).isLive) return const <SpotSummary>[];
+  if (ref.watch(isLiveProvider)) return const <SpotSummary>[];
   final location = await ref.watch(territoryLocationProvider.future);
   return ref
       .watch(spotsRepositoryProvider)

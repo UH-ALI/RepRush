@@ -113,6 +113,13 @@ abstract final class ApiErrorCode {
   static const invalidHandle = 'INVALID_HANDLE';
   static const handleTaken = 'HANDLE_TAKEN';
 
+  // Presence and duels — nearby play.
+  static const notVisible = 'NOT_VISIBLE';
+  static const notNearby = 'NOT_NEARBY';
+  static const duelAlreadyOpen = 'DUEL_ALREADY_OPEN';
+  static const unknownDuel = 'UNKNOWN_DUEL';
+  static const duelClosed = 'DUEL_CLOSED';
+
   /// Every code above. Kept adjacent to them on purpose: adding a constant
   /// without adding it here makes [isKnown] report a contract-code as unknown,
   /// which is a loud failure rather than a silent one.
@@ -144,6 +151,11 @@ abstract final class ApiErrorCode {
     internal,
     invalidHandle,
     handleTaken,
+    notVisible,
+    notNearby,
+    duelAlreadyOpen,
+    unknownDuel,
+    duelClosed,
   };
 
   /// §Common rules: "Unknown codes are a contract bug — report them, don't guess
@@ -270,10 +282,7 @@ class GeoPoint {
     );
   }
 
-  Map<String, Object?> toJson() => <String, Object?>{
-    'lat': lat,
-    'lng': lng,
-  };
+  Map<String, Object?> toJson() => <String, Object?>{'lat': lat, 'lng': lng};
 }
 
 /// A hex boundary shipped as plain coordinates — the client never computes H3.
@@ -609,10 +618,8 @@ class HexCell {
     'yours': yours,
   };
 
-  static List<HexCell> listFromJson(Object? json) => _asList(
-    json,
-    'hexCells',
-  ).map(HexCell.fromJson).toList(growable: false);
+  static List<HexCell> listFromJson(Object? json) =>
+      _asList(json, 'hexCells').map(HexCell.fromJson).toList(growable: false);
 }
 
 @immutable
@@ -796,10 +803,8 @@ class SpotSummary {
     'distanceM': distanceM,
   };
 
-  static List<SpotSummary> listFromJson(Object? json) => _asList(
-    json,
-    'spots',
-  ).map(SpotSummary.fromJson).toList(growable: false);
+  static List<SpotSummary> listFromJson(Object? json) =>
+      _asList(json, 'spots').map(SpotSummary.fromJson).toList(growable: false);
 }
 
 @immutable
@@ -1058,6 +1063,175 @@ class ChallengeClaim {
     'claimed': claimed,
     'xpAwarded': xpAwarded,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Presence — POST /presence, POST /presence/off (opt-in nearby visibility)
+// ---------------------------------------------------------------------------
+
+/// Another athlete who has chosen to be visible near you.
+///
+/// Located by HEX, never by fix: the server stores only the res-8 cell a
+/// heartbeat fell in (N7) and sends that cell's centre, so [centre] says which
+/// hex they are in and nothing finer.
+@immutable
+class NearbyPlayer {
+  const NearbyPlayer({
+    required this.userId,
+    required this.handle,
+    required this.level,
+    required this.hexesHeld,
+    required this.h3,
+    required this.centre,
+  });
+
+  final String userId;
+  final String handle;
+  final int level;
+  final int hexesHeld;
+  final String h3;
+  final GeoPoint centre;
+
+  factory NearbyPlayer.fromJson(Object? json) {
+    final map = _asMap(json, 'nearbyPlayer');
+    return NearbyPlayer(
+      userId: _asString(map['userId'], 'nearbyPlayer.userId'),
+      handle: _asString(map['handle'], 'nearbyPlayer.handle'),
+      level: _asInt(map['level'], 'nearbyPlayer.level'),
+      hexesHeld: _asInt(map['hexesHeld'], 'nearbyPlayer.hexesHeld'),
+      h3: _asString(map['h3'], 'nearbyPlayer.h3'),
+      centre: GeoPoint.fromJson(map['centre']),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'userId': userId,
+    'handle': handle,
+    'level': level,
+    'hexesHeld': hexesHeld,
+    'h3': h3,
+    'centre': centre.toJson(),
+  };
+
+  static List<NearbyPlayer> listFromJson(Object? json) => _asList(
+    json,
+    'nearby',
+  ).map(NearbyPlayer.fromJson).toList(growable: false);
+}
+
+// ---------------------------------------------------------------------------
+// Duels — GET/POST /duels/*
+// ---------------------------------------------------------------------------
+
+/// Where a duel is in its life. `finished` is derived server-side — both sets
+/// are in, or the window closed — never stored or sent by a client.
+enum DuelStatus {
+  pending('pending'),
+  active('active'),
+  finished('finished'),
+  declined('declined'),
+  expired('expired');
+
+  const DuelStatus(this.wireName);
+
+  final String wireName;
+}
+
+/// One set each, same exercise, most verified reps wins. Reps come from
+/// server-scored sets only — the same source as the daily challenge.
+@immutable
+class Duel {
+  const Duel({
+    required this.id,
+    required this.movementId,
+    required this.opponentId,
+    required this.opponentHandle,
+    required this.incoming,
+    required this.status,
+    required this.respondByMs,
+    required this.claimed,
+    required this.xpReward,
+    this.endsAtMs,
+    this.myReps,
+    this.theirReps,
+    this.result,
+  });
+
+  final String id;
+  final String movementId;
+  final String opponentId;
+  final String opponentHandle;
+
+  /// True when the opponent sent the challenge and you answer it.
+  final bool incoming;
+  final DuelStatus status;
+
+  /// When an unanswered challenge lapses.
+  final int respondByMs;
+
+  /// When the set window closes. Null until accepted.
+  final int? endsAtMs;
+
+  /// Verified reps of your one set; null until it is in.
+  final int? myReps;
+  final int? theirReps;
+
+  /// `won` / `lost` / `draw` once [status] is finished, else null.
+  final String? result;
+
+  /// XP the claim would pay (or paid). Zero when you never posted a set.
+  final int xpReward;
+  final bool claimed;
+
+  bool get open => status == DuelStatus.pending || status == DuelStatus.active;
+
+  bool get canClaim =>
+      status == DuelStatus.finished && !claimed && xpReward > 0;
+
+  factory Duel.fromJson(Object? json) {
+    final map = _asMap(json, 'duel');
+    int? optInt(String key) =>
+        map[key] == null ? null : _asInt(map[key], 'duel.$key');
+    return Duel(
+      id: _asString(map['id'], 'duel.id'),
+      movementId: _asString(map['movementId'], 'duel.movementId'),
+      opponentId: _asString(map['opponentId'], 'duel.opponentId'),
+      opponentHandle: _asString(map['opponentHandle'], 'duel.opponentHandle'),
+      incoming: _asBool(map['incoming'], 'duel.incoming'),
+      status: _asEnum(
+        map['status'],
+        'duel.status',
+        DuelStatus.values,
+        (s) => s.wireName,
+      ),
+      respondByMs: _asInt(map['respondByMs'], 'duel.respondByMs'),
+      endsAtMs: optInt('endsAtMs'),
+      myReps: optInt('myReps'),
+      theirReps: optInt('theirReps'),
+      result: _asStringOrNull(map['result'], 'duel.result'),
+      xpReward: _asInt(map['xpReward'], 'duel.xpReward'),
+      claimed: _asBool(map['claimed'], 'duel.claimed'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'movementId': movementId,
+    'opponentId': opponentId,
+    'opponentHandle': opponentHandle,
+    'incoming': incoming,
+    'status': status.wireName,
+    'respondByMs': respondByMs,
+    'endsAtMs': endsAtMs,
+    'myReps': myReps,
+    'theirReps': theirReps,
+    'result': result,
+    'xpReward': xpReward,
+    'claimed': claimed,
+  };
+
+  static List<Duel> listFromJson(Object? json) =>
+      _asList(json, 'duels').map(Duel.fromJson).toList(growable: false);
 }
 
 // ---------------------------------------------------------------------------

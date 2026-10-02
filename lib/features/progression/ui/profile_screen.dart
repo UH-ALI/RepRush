@@ -9,7 +9,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reprush/app/mode_switch.dart';
 import 'package:reprush/app/theme/design_tokens.dart';
+import 'package:reprush/features/presence/ui/presence_ui.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/features/progression/ui/account_sheets.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
@@ -130,6 +132,10 @@ class ProfileScreen extends ConsumerWidget {
           ),
           const SizedBox(height: RepRushTokens.spaceSm),
           const _AccountCard(),
+          const SizedBox(height: RepRushTokens.spaceSm),
+          const VisibilityCard(),
+          const SizedBox(height: RepRushTokens.spaceSm),
+          const AppModeCard(),
           const SizedBox(height: RepRushTokens.spaceLg),
           Text('Movement library', style: RepRushTokens.sectionTitle),
           const SizedBox(height: RepRushTokens.spaceSm),
