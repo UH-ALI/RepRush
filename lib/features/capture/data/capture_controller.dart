@@ -289,7 +289,14 @@ class CaptureController extends Notifier<CaptureStatus> {
   /// Opens the selected camera and starts the frame → inference pump.
   /// Idempotent while streaming or already starting.
   Future<void> start() async {
-    if (state.phase == CapturePhase.streaming || _starting) return;
+    // A teardown still in flight (the previous exercise closing) must finish
+    // first, or it would close the camera this call is about to open.
+    await _stopping;
+    // `_streaming` is the truth about the camera; `state.phase` is only its
+    // reflection and was left at `streaming` by an earlier [stop], which made
+    // the next exercise's screen skip opening the camera (black preview until
+    // the app was restarted).
+    if (_streaming || _starting) return;
     _starting = true;
     try {
       // Portrait-locked capture: the rotation formula still runs against
@@ -382,11 +389,25 @@ class CaptureController extends Notifier<CaptureStatus> {
   }
 
   /// Full teardown — camera, detector, counters, orientation lock.
-  Future<void> stop() async {
+  Future<void> stop() {
+    // The counting session ends NOW, synchronously. The camera teardown below
+    // takes time; if a new exercise screen starts its own session meanwhile
+    // (a quick switch), this call must not wipe that one afterwards.
+    stopSession();
+    final run = _teardown();
+    _stopping = run;
+    return run.whenComplete(() {
+      if (identical(_stopping, run)) _stopping = null;
+    });
+  }
+
+  /// The teardown in flight, so [start] can wait for it instead of racing it.
+  Future<void>? _stopping;
+
+  Future<void> _teardown() async {
     await _releaseCamera();
     await _pose?.close();
     _pose = null;
-    stopSession();
     _fpsWindow?.stop();
     _fpsWindow = null;
     _missStreak = 0;
@@ -394,6 +415,12 @@ class CaptureController extends Notifier<CaptureStatus> {
     _currentFps = 0;
     frames.value = null;
     await SystemChrome.setPreferredOrientations([]);
+    // The camera is closed now: say so, so the next capture screen (another
+    // exercise, mounted while this notifier lives on) reopens it. Skipped if
+    // the container itself is already gone (app shutting down).
+    if (ref.mounted) {
+      state = const CaptureStatus(phase: CapturePhase.initializing);
+    }
   }
 
   void _onFrame(CameraImage image) {
