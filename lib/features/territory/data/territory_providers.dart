@@ -18,6 +18,14 @@ import 'package:reprush/models/models.dart';
 
 const _viewportRadiusDegrees = 0.02;
 
+/// The least power a set must earn to count for territory, and what claims an
+/// open hex — the server's `REPRUSH_MIN_CLAIM_POWER`.
+const claimFloorPower = 10.0;
+
+/// A good set's form factor (the range is 0.6–1.0), for estimating how many
+/// reps a capture needs. Only ever an estimate: the server scores the set.
+const typicalFormFactor = 0.9;
+
 /// Once the athlete is this far from where the grid was fetched, the map
 /// re-fetches around them — about half the viewport's shorter side, so the hex
 /// they are standing in is always inside the loaded grid.
@@ -117,6 +125,10 @@ final hexDetailProvider = FutureProvider.family<HexDetail, String>((ref, h3) {
 });
 
 /// `GET /territory/leaderboard` — hexes held, total area.
-final leaderboardProvider = FutureProvider<List<LeaderboardRow>>((ref) {
+///
+/// Demo credits you with the hexes your map shows as yours, so it waits for
+/// the map first — otherwise the board and the OWNED count could disagree.
+final leaderboardProvider = FutureProvider<List<LeaderboardRow>>((ref) async {
+  if (!ref.watch(isLiveProvider)) await ref.watch(hexesProvider.future);
   return ref.watch(territoryRepositoryProvider).leaderboard();
 });

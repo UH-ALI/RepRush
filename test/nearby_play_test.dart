@@ -206,7 +206,8 @@ void main() {
 
     // The sheet now lists who is around, each with a Duel button.
     expect(find.text("You're visible nearby"), findsOneWidget);
-    expect(find.text('rival_kat'), findsOneWidget);
+    // On the map pin and in the sheet's list.
+    expect(find.text('rival_kat'), findsWidgets);
     expect(find.text('Duel'), findsNWidgets(3));
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(PresenceVisibilityController.prefsKey), isTrue);

@@ -47,7 +47,9 @@ class DemoTerritoryRepository implements TerritoryRepository {
     // The map is fetched around you, so the centre cell is where you stand.
     final home = hexContaining(cells, (swLat + neLat) / 2, (swLng + neLng) / 2);
     if (home != null) StubWorld.claimHome(home.h3);
-    return [for (final cell in cells) _dress(cell)];
+    final dressed = [for (final cell in cells) _dress(cell)];
+    StubWorld.yoursInView = dressed.where((c) => c.yours).length;
+    return dressed;
   }
 
   HexCell _dress(HexCell cell) {
@@ -56,7 +58,7 @@ class DemoTerritoryRepository implements TerritoryRepository {
         h3: cell.h3,
         polygon: cell.polygon,
         ownerColor: 'mine',
-        power: math.max(cell.power, StubWorld.powerOf(cell.h3)),
+        power: StubWorld.yourPowerIn(cell.h3),
         yours: true,
       );
     }
@@ -87,17 +89,29 @@ class DemoTerritoryRepository implements TerritoryRepository {
       if (e.code != ApiErrorCode.unknownHex) rethrow;
     }
     final captured = StubWorld.isCaptured(h3);
-    if (!captured && real?.ownerHandle != null) return real!;
+    if (!captured && real?.ownerHandle != null) {
+      // A real holder: their real power, plus whatever your demo sets added.
+      return HexDetail(
+        h3: h3,
+        ownerHandle: real!.ownerHandle,
+        power: real.power,
+        yourPower: real.yourPower + StubWorld.yourPowerIn(h3),
+        spots: real.spots,
+        recentFlips: real.recentFlips,
+      );
+    }
     final handle = await myHandle();
     final held = captured ? (yours: true, owner: handle) : StubWorld.holder(h3);
     final owner = held.yours ? handle : held.owner;
-    final power = math.max(real?.power ?? 0, StubWorld.powerOf(h3));
+    final power = captured
+        ? StubWorld.yourPowerIn(h3)
+        : math.max(real?.power ?? 0, StubWorld.powerOf(h3));
     final now = DateTime.now();
     return HexDetail(
       h3: h3,
       ownerHandle: owner,
       power: owner == null ? 0 : power,
-      yourPower: held.yours ? power : 0,
+      yourPower: held.yours ? power : StubWorld.yourPowerIn(h3),
       spots: real?.spots ?? const [],
       recentFlips: [
         if (owner != null)
@@ -119,7 +133,10 @@ class DemoTerritoryRepository implements TerritoryRepository {
     for (final row in real) {
       counts[row.handle] = (counts[row.handle] ?? 0) + row.hexesHeld;
     }
+    // You hold what your map shows you holding, so the board and the map's
+    // OWNED count agree.
     counts[handle] =
+        StubWorld.yoursInView ??
         (counts[handle] ?? 0) + StubWorld.yourSeedHexes + StubWorld.newlyHeld;
     // On a tie you rank first: you are the one who just took ground.
     final ranked = counts.entries.toList()

@@ -15,6 +15,7 @@ import 'package:reprush/features/session/data/session_providers.dart';
 import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
+import 'package:reprush/features/territory/ui/current_hex_line.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
@@ -52,7 +53,7 @@ class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
       body: ListView(
         padding: const EdgeInsets.all(RepRushTokens.spaceMd),
         children: [
-          GlassCard(child: HexStatusLine(cell: current)),
+          GlassCard(child: CurrentHexLine(cell: current)),
           const SizedBox(height: RepRushTokens.spaceLg),
           Text('Pick your exercise', style: RepRushTokens.sectionTitle),
           const SizedBox(height: RepRushTokens.spaceSm),

@@ -86,76 +86,103 @@ void main() {
     );
   });
 
-  test('the board is busy: demo rivals, real holders, and you', () async {
+  test('the board is busy, and you hold what your map shows', () async {
+    final yoursOnMap = (await map()).where((c) => c.yours).length;
     final board = await demo.leaderboard();
     final handles = board.map((r) => r.handle).toList();
-    expect(handles.first, 'iron_meridian');
-    expect(handles, containsAll(['rival_kat', 'Blue Man', 'Me']));
-    expect(
-      board.firstWhere((r) => r.handle == 'Me').hexesHeld,
-      StubWorld.yourSeedHexes,
-    );
+    expect(handles, containsAll(['iron_meridian', 'rival_kat', 'Blue Man']));
+    expect(board.firstWhere((r) => r.handle == 'Me').hexesHeld, yoursOnMap);
     expect(
       [for (final r in board) r.rank],
       [for (var i = 1; i <= board.length; i++) i],
     );
   });
 
-  test('a demo set in a rival hex captures it — on this phone only', () async {
-    StubWorld.beginSession('rival_hex', wasYours: false);
+  test('a set that out-powers the holder captures — on this phone', () async {
+    // Blue Man holds it with 15; 20 squats ≈ 18 power.
+    StubWorld.beginSession('rival_hex', wasYours: false, holderPower: 15);
     final result = await const StubSessionRepository().submit(
-      _set('squat', 14),
+      _set('squat', 20),
     );
     expect(result.hexResult?.h3, 'rival_hex');
     expect(result.hexResult?.captured, isTrue);
+    expect(result.hexResult?.yourPower, closeTo(18, .01));
 
-    final taken = (await map()).firstWhere((c) => c.h3 == 'rival_hex');
+    final cells = await map();
+    final taken = cells.firstWhere((c) => c.h3 == 'rival_hex');
     expect(taken.yours, isTrue);
     expect(taken.ownerColor, 'mine');
-
-    // One more hex on your row of the board.
-    final board = await demo.leaderboard();
+    // The board follows the map.
     expect(
-      board.firstWhere((r) => r.handle == 'Me').hexesHeld,
-      StubWorld.yourSeedHexes + 1,
+      (await demo.leaderboard()).firstWhere((r) => r.handle == 'Me').hexesHeld,
+      cells.where((c) => c.yours).length,
     );
   });
 
-  test('a set in a hex you already hold adds power, not a capture', () async {
-    StubWorld.beginSession('mine_hex', wasYours: true);
+  test('a set short of the holder adds power but does not capture', () async {
+    StubWorld.beginSession('rival_hex', wasYours: false, holderPower: 40);
+    final first = await const StubSessionRepository().submit(_set('squat', 20));
+    expect(first.hexResult?.captured, isFalse);
+    expect(first.hexResult?.power, 40);
+    expect(first.hexResult?.yourPower, closeTo(18, .01));
+    expect((await map()).firstWhere((c) => c.h3 == 'rival_hex').yours, isFalse);
+    // The progress shows up in the hex detail…
+    expect((await demo.hexDetail('rival_hex')).yourPower, closeTo(18, .01));
+
+    // …and power accumulates: two more sets pass 40.
+    await const StubSessionRepository().submit(_set('squat', 20));
+    final third = await const StubSessionRepository().submit(_set('squat', 20));
+    expect(third.hexResult?.captured, isTrue);
+    expect(third.hexResult?.yourPower, closeTo(54, .01));
+  });
+
+  test('a set below the claim floor earns XP but no territory', () async {
+    StubWorld.beginSession('open_hex', wasYours: false, holderPower: 0);
+    final result = await const StubSessionRepository().submit(_set('squat', 5));
+    expect(result.xp, greaterThan(0));
+    expect(result.hexResult, isNull);
+  });
+
+  test('a set in a hex you already hold keeps it, with more power', () async {
+    StubWorld.beginSession('mine_hex', wasYours: true, holderPower: 15);
     final result = await const StubSessionRepository().submit(
-      _set('squat', 10),
+      _set('squat', 12),
     );
-    expect(result.hexResult?.captured, isFalse);
-    // Nothing new held, so your row is untouched.
-    expect(
-      (await demo.leaderboard()).firstWhere((r) => r.handle == 'Me').hexesHeld,
-      StubWorld.yourSeedHexes,
-    );
+    expect(result.hexResult?.captured, isTrue);
+    expect(result.hexResult?.yourPower, closeTo(25.8, .01));
   });
 
   test('the demo score comes from the set you did', () async {
-    StubWorld.beginSession('open_hex', wasYours: false);
+    StubWorld.beginSession('open_hex', wasYours: false, holderPower: 0);
     final squats = await const StubSessionRepository().submit(
       _set('squat', 12),
     );
     final pullUps = await const StubSessionRepository().submit(
       _set('pull_up', 12),
     );
-    expect(squats.xp, greaterThan(0));
-    expect(pullUps.xp, greaterThan(squats.xp));
+    // reps × difficulty × 0.9, as the server would roughly score them.
+    expect(squats.xp, 11);
+    expect(pullUps.xp, 19);
     expect(squats.spotResult, isNull);
-    // The first 12-rep pull-up set is a PR; the capture only happens once.
     expect(pullUps.prs.single.value, 12);
+    // 10.8 claims the open hex.
     expect(squats.hexResult?.captured, isTrue);
-    expect(pullUps.hexResult?.captured, isFalse);
   });
 
   test('a captured hex with no server record still opens its detail', () async {
-    StubWorld.beginSession('open_hex', wasYours: false);
-    await const StubSessionRepository().submit(_set('squat', 8));
+    StubWorld.beginSession('open_hex', wasYours: false, holderPower: 0);
+    await const StubSessionRepository().submit(_set('squat', 15));
     final detail = await demo.hexDetail('open_hex');
     expect(detail.ownerHandle, 'Me');
     expect(detail.recentFlips.first.handle, 'Me');
+  });
+
+  test("the hex you open the map in is a rival's, and one set takes it", () {
+    StubWorld.claimHome('home_hex');
+    final held = StubWorld.holder('home_hex');
+    expect(held.yours, isFalse);
+    expect(held.owner, isNotNull);
+    // One honest set of ~15 squats (13.5 power) passes it.
+    expect(StubWorld.powerOf('home_hex'), lessThan(13.5));
   });
 }

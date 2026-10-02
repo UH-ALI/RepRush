@@ -110,7 +110,11 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     final cells = await ref.read(hexesProvider.future);
     final cell = hexContaining(cells, location.lat, location.lng);
     if (cell == null) return started;
-    StubWorld.beginSession(cell.h3, wasYours: cell.yours);
+    StubWorld.beginSession(
+      cell.h3,
+      wasYours: cell.yours,
+      holderPower: cell.power,
+    );
     return SessionStart(
       sessionId: started.sessionId,
       serverStartMs: started.serverStartMs,
@@ -148,6 +152,7 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     }
     ref
       ..invalidate(duelsProvider)
+      ..invalidate(hexDetailProvider)
       ..invalidate(hexesProvider)
       ..invalidate(leaderboardProvider)
       ..invalidate(profileProvider)

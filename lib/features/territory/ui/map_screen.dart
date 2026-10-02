@@ -31,6 +31,7 @@ import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/features/spots/data/spots_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/features/territory/ui/basemap.dart';
+import 'package:reprush/features/territory/ui/current_hex_line.dart';
 import 'package:reprush/models/models.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
@@ -414,44 +415,51 @@ class _MapViewState extends ConsumerState<_MapView>
     ),
   );
 
-  /// Athletes in one hex, drawn at its centre. Nudged off the "you are here"
-  /// marker when they share your hex, so neither hides the other.
+  /// Athletes in one hex: a location pin at its centre, captioned with who is
+  /// there. Nudged off the "you are here" marker when they share your hex,
+  /// so neither hides the other.
   Marker _playersMarker(List<NearbyPlayer> group, SessionLocation here) {
     final centre = group.first.centre;
     final onYou = distanceM(here.lat, here.lng, centre.lat, centre.lng) < 80;
+    final label = group.length == 1
+        ? group.first.handle
+        : '${group.first.handle} +${group.length - 1}';
     return Marker(
       point: LatLng(onYou ? centre.lat - .0008 : centre.lat, centre.lng),
-      width: 50,
-      height: 50,
+      width: 120,
+      height: 64,
+      // The pin's tip, at the bottom of the marker, sits on the point.
+      alignment: Alignment.topCenter,
       child: GestureDetector(
         onTap: () => showPlayersSheet(context, group),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            PlayerAvatar(handle: group.first.handle),
-            if (group.length > 1)
-              Positioned(
-                right: -2,
-                top: -2,
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Text(
-                      '+${group.length - 1}',
-                      style: const TextStyle(
-                        color: playerColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: RepRushTokens.chrome,
+                borderRadius: BorderRadius.circular(99),
+                border: Border.all(color: playerColor.withValues(alpha: .8)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
+            ),
+            const Icon(
+              Icons.location_on,
+              size: 38,
+              color: playerColor,
+              shadows: [Shadow(blurRadius: 6, color: Colors.black87)],
+            ),
           ],
         ),
       ),
@@ -595,7 +603,7 @@ class _TrainHereCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            HexStatusLine(cell: cell),
+            CurrentHexLine(cell: cell),
             const SizedBox(height: RepRushTokens.spaceSm + 4),
             BrandButton(
               label: label,

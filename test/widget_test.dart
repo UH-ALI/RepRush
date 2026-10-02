@@ -132,8 +132,9 @@ void main() {
 
     expect(find.text('demo_athlete'), findsOneWidget);
     expect(find.text('Level 3 · 540 XP'), findsOneWidget);
-    // Rank comes from the territory board (stub: 4th).
-    expect(find.text('#4'), findsOneWidget);
+    // Rank comes from the territory board, which counts the hexes your map
+    // shows as yours.
+    expect(find.textContaining(RegExp(r'^#\d+$')), findsOneWidget);
   });
 
   group('name and account', () {

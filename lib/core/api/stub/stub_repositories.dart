@@ -75,9 +75,9 @@ class StubSessionRepository implements SessionRepository {
     // the phone, so the demo cannot touch a real score. A payload with no
     // reps (the contract fixtures) gets the B-24 fixture's numbers.
     final hex = StubWorld.lastStartH3 ?? DemoVenue.demoHexH3;
-    final captured = StubWorld.capture(hex);
     final set = _firstSet(evidence);
     if (set == null) {
+      final captured = StubWorld.capture(hex);
       return SubmitResult(
         xp: 240,
         level: 3,
@@ -101,24 +101,34 @@ class StubSessionRepository implements SessionRepository {
         achievements: const ['first_capture'],
       );
     }
-    // Roughly what the server awards a clean set: reps × difficulty × a good
-    // form factor, at ~1 XP per point.
-    final score = (set.reps * _difficulty(set.movementId) * 9).round();
+    // What the server awards a clean set: reps × difficulty × a good form
+    // factor. XP is the rounded score, as on the server.
+    final score =
+        (set.reps * _difficulty(set.movementId) * typicalFormFactor * 10)
+            .round() /
+        10;
     final best = _bestReps[set.movementId] ?? 0;
     final isPr = set.reps > best;
     if (isPr) _bestReps[set.movementId] = set.reps;
+    // Below the claim floor a set earns XP but no territory — the server
+    // returns no hexResult then, and so does the demo.
+    final landed = score >= StubWorld.minClaimPower
+        ? StubWorld.addPower(hex, score)
+        : null;
     return SubmitResult(
-      xp: score,
+      xp: math.max(1, score.round()),
       level: 3,
       levelUps: const [],
-      hexResult: HexResult(
-        h3: hex,
-        captured: captured,
-        power: math.max(score.toDouble(), 1),
-        yourPower: math.max(score.toDouble(), 1),
-      ),
+      hexResult: landed == null
+          ? null
+          : HexResult(
+              h3: hex,
+              captured: landed.holds,
+              power: landed.holderPower,
+              yourPower: landed.yourPower,
+            ),
       spotResult: null,
-      rankChange: captured ? const RankChange(before: 4, after: 3) : null,
+      rankChange: null,
       unlocks: const [],
       prs: [
         if (isPr)
@@ -135,11 +145,16 @@ class StubSessionRepository implements SessionRepository {
   /// Your best demo set per movement, for the PR line.
   static final _bestReps = <String, int>{};
 
+  /// The catalogue's multipliers (0002_movements.sql) for the movements the
+  /// camera can count.
   static double _difficulty(String movementId) => switch (movementId) {
-    'pull_up' => 2.0,
-    'push_up' => 1.2,
+    'pull_up' => 1.8,
     _ => 1.0,
   };
+
+  /// A good set's form factor — the range is 0.6 to 1.0. The capture
+  /// estimate on the map uses the same figure.
+  static const typicalFormFactor = 0.9;
 
   static ({String movementId, int reps})? _firstSet(
     Map<String, Object?> evidence,
@@ -208,37 +223,60 @@ abstract final class StubWorld {
   /// Hexes the demo board credits you with before any demo capture.
   static const yourSeedHexes = 5;
 
-  /// Hexes captured in the demo → whether each was already yours before.
+  /// The least power one set must earn to count for territory at all, and
+  /// what claims an open hex — the server's `REPRUSH_MIN_CLAIM_POWER`.
+  static const minClaimPower = 10.0;
+
+  /// The holder's power in the hex the map opens in: one honest set of about
+  /// fifteen squats takes it.
+  static const homePower = 12.0;
+
+  /// Demo power you have put into each hex.
+  static final _myPower = <String, double>{};
+
+  /// Hexes demo sets made yours → whether each was already yours before.
   static final _captured = <String, bool>{};
   static String? _home;
 
-  /// The hex the most recent demo session started in — what its submit flips.
+  /// The hex the most recent demo session started in — where its set lands.
   static String? lastStartH3;
 
-  /// Whether that hex was already yours when the session started, when the
-  /// real map said so; null means "ask the fixed pattern".
-  static bool? _lastStartWasYours;
+  /// What the real map said about that hex when the session started (demo
+  /// over a server); null means "ask the fixed pattern".
+  static bool? _startWasYours;
+  static double? _startHolderPower;
+
+  /// How many hexes the map currently shows as yours — what the demo board
+  /// credits you with, so the board and the map's OWNED count agree.
+  static int? yoursInView;
 
   /// Back to a fresh demo world.
   static void reset() {
+    _myPower.clear();
     _captured.clear();
     _home = null;
     lastStartH3 = null;
-    _lastStartWasYours = null;
+    _startWasYours = null;
+    _startHolderPower = null;
+    yoursInView = null;
   }
 
-  /// A demo session opened in [h3]. [wasYours] comes from the real map when
-  /// the demo is drawn over live territory.
-  static void beginSession(String h3, {bool? wasYours}) {
+  /// A demo session opened in [h3]. Over a server, [wasYours] and
+  /// [holderPower] come from the real map's cell.
+  static void beginSession(String h3, {bool? wasYours, double? holderPower}) {
     lastStartH3 = h3;
-    _lastStartWasYours = wasYours;
+    _startWasYours = wasYours;
+    _startHolderPower = holderPower;
   }
 
-  /// True once a demo set has landed in [h3].
+  /// True once a demo set has made [h3] yours.
   static bool isCaptured(String h3) => _captured.containsKey(h3);
 
-  /// Marks the hex the map first opened in. It is always a rival's, so the
-  /// first demo set there is a capture. Only the first call counts.
+  /// Your demo power in [h3] — what the capture bar measures.
+  static double yourPowerIn(String h3) => _myPower[h3] ?? 0;
+
+  /// Marks the hex the map first opened in. It is always a rival's, and an
+  /// easy one, so the first demo set there is a capture. First call wins.
   static void claimHome(String h3) => _home ??= h3;
 
   /// FNV-1a over the id: stable across runs and platforms, unlike
@@ -249,6 +287,35 @@ abstract final class StubWorld {
       h = ((h ^ unit) * 0x01000193) & 0xffffffff;
     }
     return h;
+  }
+
+  /// Adds one set's [power] to [h3] and settles who holds it by the server's
+  /// rule: an open hex is claimed at [minClaimPower], a held one when your
+  /// power passes the holder's. Returns whether you hold it now, your power,
+  /// and the holder's power afterwards (yours, if you hold it).
+  static ({bool holds, double yourPower, double holderPower}) addPower(
+    String h3,
+    double power,
+  ) {
+    final started = h3 == lastStartH3;
+    final held = holder(h3);
+    final wasYours = (started ? _startWasYours : null) ?? held.yours;
+    final holderPower =
+        (started ? _startHolderPower : null) ??
+        (held.owner == null ? 0.0 : powerOf(h3));
+    // A hex that was already yours starts from the power you hold it with.
+    final mine = (_myPower[h3] ?? (wasYours ? holderPower : 0)) + power;
+    _myPower[h3] = mine;
+    final holds =
+        wasYours ||
+        _captured.containsKey(h3) ||
+        (holderPower <= 0 ? mine >= minClaimPower : mine > holderPower);
+    if (holds) _captured.putIfAbsent(h3, () => wasYours);
+    return (
+      holds: holds,
+      yourPower: mine,
+      holderPower: holds ? mine : holderPower,
+    );
   }
 
   /// Hexes the demo made yours that were not yours already.
@@ -343,13 +410,17 @@ abstract final class StubWorld {
     return (yours: false, owner: rivals[(_hash(id) >> 8) % rivals.length]);
   }
 
-  static double powerOf(String id) => 180.0 + ((_hash(id) >> 4) % 900);
+  /// A demo holder's power, on the real scale: a 20-squat set earns ~18, so
+  /// most hexes fall to one to four good sets and the home hex to one.
+  static double powerOf(String id) =>
+      id == _home ? homePower : 15.0 + ((_hash(id) >> 4) % 60);
 
-  /// A set landed in [id]: it is yours now. Returns whether that changed hands.
+  /// The contract fixtures' path: [id] is simply yours now. Returns whether
+  /// it changed hands.
   static bool capture(String id) {
     if (_captured.containsKey(id)) return false;
-    final wasYours = id == lastStartH3 && _lastStartWasYours != null
-        ? _lastStartWasYours!
+    final wasYours = id == lastStartH3 && _startWasYours != null
+        ? _startWasYours!
         : holder(id).yours;
     _captured[id] = wasYours;
     return !wasYours;
@@ -383,6 +454,7 @@ abstract final class StubWorld {
         }
         final id = _idOf(q, r);
         final held = holder(id);
+        final power = isCaptured(id) ? yourPowerIn(id) : powerOf(id);
         cells.add(
           HexCell(
             h3: id,
@@ -393,12 +465,13 @@ abstract final class StubWorld {
                 : held.owner == null
                 ? 'unclaimed'
                 : 'rival',
-            power: held.owner == null ? 0 : powerOf(id),
+            power: held.owner == null ? 0 : power,
             yours: held.yours,
           ),
         );
       }
     }
+    yoursInView = cells.where((c) => c.yours).length;
     return cells;
   }
 
@@ -443,7 +516,7 @@ class StubTerritoryRepository implements TerritoryRepository {
       h3: h3,
       ownerHandle: held.owner,
       power: power,
-      yourPower: held.yours ? power : power / 2,
+      yourPower: held.yours ? power : StubWorld.yourPowerIn(h3),
       spots: h3 == DemoVenue.demoHexH3
           ? StubSpotsRepository.seedSpots
           : const [],
@@ -474,7 +547,9 @@ class StubTerritoryRepository implements TerritoryRepository {
         (handle: handle, hexes: hexes),
       (
         handle: StubProgressionRepository.handle,
-        hexes: StubWorld.yourSeedHexes + StubWorld.newlyHeld,
+        hexes:
+            StubWorld.yoursInView ??
+            StubWorld.yourSeedHexes + StubWorld.newlyHeld,
       ),
     ]..sort((a, b) => b.hexes.compareTo(a.hexes));
     return [
