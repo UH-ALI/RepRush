@@ -34,6 +34,15 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // No code shrinking: with R8 on, a release build crashes at launch
+            // ("Failed to create an instance of androidx.work.impl.WorkDatabase")
+            // because the shrinker strips the Room-generated WorkManager
+            // database that the Android plugins initialise on startup. Turn
+            // shrinking back on only together with keep rules for androidx.work
+            // and androidx.room.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
