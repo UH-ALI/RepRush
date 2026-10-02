@@ -47,6 +47,11 @@ class _LiveTerritory implements TerritoryRepository {
   );
 
   @override
+  Future<List<HexCell>> myHexes() async => [
+    _cell('mine_hex', owner: 'Me', yours: true),
+  ];
+
+  @override
   Future<List<LeaderboardRow>> leaderboard() async => const [
     LeaderboardRow(rank: 1, handle: 'Blue Man', hexesHeld: 1, areaKm2: .7),
   ];

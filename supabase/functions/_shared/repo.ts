@@ -643,6 +643,24 @@ export interface LeaderboardEntry {
 }
 
 /**
+ * Every hex the materialised cache says [userId] holds on [board] — the
+ * candidates for "your territory, everywhere". Indexed on owner_id (0007), so
+ * this is one small read however large the board grows; a player holds tens of
+ * hexes, not thousands. The caller re-resolves these against the ledger, since
+ * the cache can lag a decay.
+ */
+export async function ownedHexIds(client: Db, userId: string, board: Board): Promise<string[]> {
+  const { data, error } = await client
+    .from("hex_ownership")
+    .select("h3")
+    .eq("owner_id", userId)
+    .eq("board", board)
+    .limit(500);
+  if (error) failDb("reading your hexes", error);
+  return ((data ?? []) as { h3: string }[]).map((row) => row.h3);
+}
+
+/**
  * The territory leaderboard (D7): holders ranked by hexes held, most first.
  *
  * Reads the `hex_ownership` CACHE, not the ledger — that is the whole reason the

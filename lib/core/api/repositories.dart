@@ -28,7 +28,7 @@ abstract interface class SessionRepository {
 }
 
 /// `GET /territory/hexes`, `GET /territory/hex/:h3`,
-/// `GET /territory/leaderboard`.
+/// `GET /territory/leaderboard`, `GET /territory/mine`.
 abstract interface class TerritoryRepository {
   /// Hexes in [bbox] = (swLat, swLng, neLat, neLng), shipped as plain
   /// coordinates — H3 is computed server-side (requirements.md §8 open-1).
@@ -42,6 +42,11 @@ abstract interface class TerritoryRepository {
   Future<HexDetail> hexDetail(String h3);
 
   Future<List<LeaderboardRow>> leaderboard();
+
+  /// Every hex you hold, anywhere in the world, with its outline — a few
+  /// dozen at most, so the map can always draw your territory without loading
+  /// the grid around each piece of it.
+  Future<List<HexCell>> myHexes();
 }
 
 /// `GET /spots/nearby`, `POST /spots`, `POST /spots/:id/checkin`,

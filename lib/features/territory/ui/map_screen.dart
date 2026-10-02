@@ -175,6 +175,14 @@ class _MapViewState extends ConsumerState<_MapView>
     }
     final cells = widget.cells;
     final yours = cells.where((c) => c.yours).length;
+    // Your territory beyond the loaded grid: only your own hexes, so a few
+    // dozen polygons at most however far they are spread.
+    final mine = ref.watch(myHexesProvider).value ?? const <HexCell>[];
+    final loaded = {for (final c in cells) c.h3};
+    final far = [
+      for (final c in mine)
+        if (!loaded.contains(c.h3)) c,
+    ];
     final rivals = cells.where((c) => !c.yours && c.ownerHandle != null).length;
     final open = cells.length - yours - rivals;
 
@@ -203,6 +211,12 @@ class _MapViewState extends ConsumerState<_MapView>
           children: [
             basemapLayer(context),
             AnimatedBuilder(
+              animation: _flash,
+              builder: (context, _) => PolygonLayer(
+                polygons: [for (final cell in far) _farPolygon(cell)],
+              ),
+            ),
+            AnimatedBuilder(
               animation: Listenable.merge([_pulse, _flash]),
               builder: (context, _) => PolygonLayer(
                 polygons: [
@@ -213,6 +227,9 @@ class _MapViewState extends ConsumerState<_MapView>
             ),
             MarkerLayer(
               markers: [
+                // A flag on each far-off hex, so your territory is findable
+                // at any zoom, even where the hex itself is a speck.
+                for (final cell in far) _flagMarker(cell),
                 for (final spot in widget.spots) _spotMarker(spot),
                 for (final group in playersByHex.values)
                   _playersMarker(group, here),
@@ -250,11 +267,17 @@ class _MapViewState extends ConsumerState<_MapView>
           top: RepRushTokens.spaceMd,
           child: Row(
             children: [
-              // Short and fixed-length: always shown in full.
-              _MapPill(
-                icon: Icons.hexagon,
-                text: '$yours OWNED',
-                color: Ownership.yours.color,
+              // Short and fixed-length: always shown in full. Opens your
+              // territory everywhere — the map only loads the ground around
+              // you.
+              GestureDetector(
+                onTap: () => _showTerritory(mine),
+                child: _MapPill(
+                  icon: Icons.hexagon,
+                  text: '$yours OWNED',
+                  color: Ownership.yours.color,
+                  trailing: Icons.expand_more,
+                ),
               ),
               const SizedBox(width: RepRushTokens.spaceSm),
               // The opt-in to nearby play: hidden by default, and while
@@ -517,11 +540,74 @@ class _MapViewState extends ConsumerState<_MapView>
     );
   }
 
+  /// One of your hexes beyond the loaded grid, drawn on its own.
+  Polygon<HexCell> _farPolygon(HexCell cell) {
+    final flash = cell.h3 == _flashHex && _flash.isAnimating
+        ? 1 - Curves.easeOut.transform(_flash.value)
+        : 0.0;
+    final colour = Ownership.yours.color;
+    return Polygon<HexCell>(
+      points: [for (final point in cell.polygon) LatLng(point.lat, point.lng)],
+      color: Color.lerp(
+        colour.withValues(alpha: .30),
+        Colors.white.withValues(alpha: .85),
+        flash,
+      )!,
+      borderColor: cell.h3 == _flashHex ? Colors.white : colour,
+      borderStrokeWidth: 2,
+    );
+  }
+
+  Marker _flagMarker(HexCell cell) {
+    final centre = polygonCentre(cell.polygon);
+    return Marker(
+      point: LatLng(centre.lat, centre.lng),
+      width: 30,
+      height: 30,
+      child: GestureDetector(
+        onTap: () => _focusHex(cell.h3),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: RepRushTokens.chrome,
+            shape: BoxShape.circle,
+            border: Border.all(color: Ownership.yours.color, width: 2),
+            boxShadow: RepRushTokens.cardShadow,
+          ),
+          child: Icon(Icons.flag, size: 16, color: Ownership.yours.color),
+        ),
+      ),
+    );
+  }
+
+  /// Every hex you hold, nearest first; picking one flies the map there.
+  void _showTerritory(List<HexCell> mine) {
+    final here = ref.read(hereProvider) ?? widget.location;
+    final current = ref.read(currentHexProvider);
+    final loaded = {for (final c in widget.cells) c.h3};
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: RepRushTokens.surfaceDark,
+      isScrollControlled: true,
+      builder: (_) => _TerritorySheet(
+        mine: mine,
+        here: here,
+        currentH3: current?.h3,
+        onMap: loaded,
+        onPick: (h3) {
+          Navigator.pop(context);
+          _focusHex(h3);
+        },
+      ),
+    );
+  }
+
   void _focusHex(String h3) {
     _scheduledFocus = null;
     if (!mounted) return;
     ref.read(mapFocusProvider.notifier).clear();
-    final cell = widget.cells.where((c) => c.h3 == h3).firstOrNull;
+    final cell =
+        widget.cells.where((c) => c.h3 == h3).firstOrNull ??
+        ref.read(myHexesProvider).value?.where((c) => c.h3 == h3).firstOrNull;
     if (cell == null) return;
     final centre = polygonCentre(cell.polygon);
     _mapController.move(LatLng(centre.lat, centre.lng), _focusZoom);
@@ -842,10 +928,18 @@ class _HereBadge extends StatelessWidget {
 }
 
 class _MapPill extends StatelessWidget {
-  const _MapPill({required this.icon, required this.text, required this.color});
+  const _MapPill({
+    required this.icon,
+    required this.text,
+    required this.color,
+    this.trailing,
+  });
   final IconData icon;
   final String text;
   final Color color;
+
+  /// A hint that the pill opens something.
+  final IconData? trailing;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -876,6 +970,10 @@ class _MapPill extends StatelessWidget {
               ),
             ),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: 2),
+            Icon(trailing, size: 16, color: color),
+          ],
         ],
       ),
     ),
@@ -971,4 +1069,102 @@ class _LegendChip extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Your territory, everywhere: every hex you hold, nearest first, each one
+/// tappable to fly the map there.
+class _TerritorySheet extends StatelessWidget {
+  const _TerritorySheet({
+    required this.mine,
+    required this.here,
+    required this.currentH3,
+    required this.onMap,
+    required this.onPick,
+  });
+
+  final List<HexCell> mine;
+  final SessionLocation here;
+  final String? currentH3;
+  final Set<String> onMap;
+  final void Function(String h3) onPick;
+
+  double _away(HexCell cell) {
+    final centre = polygonCentre(cell.polygon);
+    return distanceM(here.lat, here.lng, centre.lat, centre.lng);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...mine]..sort((a, b) => _away(a).compareTo(_away(b)));
+    final nearby = sorted.where((c) => onMap.contains(c.h3)).length;
+    final area = (sorted.length * LeaderboardRow.hexAreaKm2).toStringAsFixed(1);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(RepRushTokens.spaceLg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.flag, color: Ownership.yours.color),
+                const SizedBox(width: RepRushTokens.spaceSm),
+                Expanded(
+                  child: Text(
+                    'Your territory',
+                    style: RepRushTokens.sectionTitle,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            Text(
+              sorted.isEmpty
+                  ? "You don't hold any hexes yet. Train in the hex you're "
+                        'standing in to claim your first.'
+                  : '${sorted.length} '
+                        '${sorted.length == 1 ? 'hex' : 'hexes'} · '
+                        '$area km² · $nearby on your map',
+              style: RepRushTokens.bodyLabel,
+            ),
+            const SizedBox(height: RepRushTokens.spaceSm),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * .5,
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final cell in sorted)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.hexagon,
+                        color: Ownership.yours.color,
+                      ),
+                      title: Text(
+                        cell.h3 == currentH3
+                            ? "You're here"
+                            : '${formatDistance(_away(cell))} away',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        '${cell.power.round()} power'
+                        '${onMap.contains(cell.h3) ? ' · on your map' : ''}',
+                        style: RepRushTokens.bodyLabel,
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => onPick(cell.h3),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

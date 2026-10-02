@@ -120,6 +120,14 @@ final currentHexProvider = Provider<HexCell?>((ref) {
   return hexContaining(cells, here.lat, here.lng);
 });
 
+/// `GET /territory/mine` — every hex you hold, anywhere. Waits for the map:
+/// it refreshes whenever the map does (after a set, say), and the demo lays
+/// its territory out around where the map first opened.
+final myHexesProvider = FutureProvider<List<HexCell>>((ref) async {
+  await ref.watch(hexesProvider.future);
+  return ref.watch(territoryRepositoryProvider).myHexes();
+});
+
 /// `GET /territory/hex/:h3` — owner, power, your power, spots, recent flips.
 final hexDetailProvider = FutureProvider.family<HexDetail, String>((ref, h3) {
   return ref.watch(territoryRepositoryProvider).hexDetail(h3);

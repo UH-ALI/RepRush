@@ -141,6 +141,14 @@ class LiveTerritoryRepository implements TerritoryRepository {
     final body = await transport.get('territory/leaderboard');
     return LeaderboardRow.listFromJson(body);
   }
+
+  /// Read from the ownership index and re-resolved server-side, so a hex you
+  /// have since lost or that decayed away is not listed.
+  @override
+  Future<List<HexCell>> myHexes() async {
+    final body = await transport.get('territory/mine');
+    return HexCell.listFromJson(body);
+  }
 }
 
 /// `GET /challenges/daily`, `POST /challenges/daily/claim` — one deployed

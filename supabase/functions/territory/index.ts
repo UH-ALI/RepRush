@@ -10,6 +10,7 @@
 ///     GET territory/hexes?bbox=swLat,swLng,neLat,neLng   (B-10 map grid)
 ///     GET territory/hex/<h3>                              (D6 detail + flips)
 ///     GET territory/leaderboard                           (D7 board)
+///     GET territory/mine                                  (your hexes, anywhere)
 /// — share this function and are dispatched on the path tail. B-10's server-side
 /// polygon computation lives here too. Deviation recorded so the register and the
 /// tree can be reconciled later.
@@ -36,6 +37,7 @@ import {
   leaderboardRows,
   loadHandles,
   loadLiveContributions,
+  ownedHexIds,
   recentFlips,
 } from "../_shared/repo.ts";
 import {
@@ -153,6 +155,42 @@ async function handleHexes(user: Authed, bboxRaw: string | null): Promise<HexCel
   });
 }
 
+/**
+ * GET territory/mine — every hex you hold, anywhere, with its outline: what the
+ * map draws as "your territory" beyond the grid it has loaded.
+ *
+ * Cheap by construction: candidates come from the owner index on the
+ * `hex_ownership` cache, then only THOSE cells are re-resolved from the ledger
+ * (the same lazy decay as the map, D3), so a hex you have since lost or that
+ * decayed below the claim floor drops out instead of being reported stale.
+ */
+async function handleMine(user: Authed): Promise<HexCellOut[]> {
+  const client = db();
+  const board = boardFor(user.isDemo);
+  const candidates = await ownedHexIds(client, user.userId, board);
+  if (candidates.length === 0) return [];
+
+  const nowMs = Date.now();
+  const threshold = minClaimPower();
+  const contributions = await loadLiveContributions(client, candidates, board);
+  const handle = (await loadHandles(client, [user.userId])).get(user.userId) ?? null;
+
+  const mine: HexCellOut[] = [];
+  for (const h3 of candidates) {
+    const owner = resolveOwner(resolveHexPower(contributions.get(h3) ?? [], nowMs), threshold);
+    if (owner === null || owner.userId !== user.userId) continue;
+    mine.push({
+      h3,
+      polygon: hexBoundary(h3).map(([lat, lng]) => ({ lat, lng })),
+      ownerHandle: handle,
+      ownerColor: ownerColor(true, true),
+      power: owner.power,
+      yours: true,
+    });
+  }
+  return mine;
+}
+
 interface HexDetailOut {
   h3: string;
   ownerHandle: string | null;
@@ -256,6 +294,7 @@ Deno.serve((req: Request): Response | Promise<Response> => {
       }
       if (head === "hex" && arg !== undefined) return json(stubHexDetail(arg));
       if (head === "leaderboard") return json(stubLeaderboard());
+      if (head === "mine") return json([]);
       return error(
         ErrorCode.MALFORMED_REQUEST,
         `Unknown territory route: /${route.join("/")}.`,
@@ -266,6 +305,7 @@ Deno.serve((req: Request): Response | Promise<Response> => {
     if (head === "hexes") return json(await handleHexes(user, url.searchParams.get("bbox")));
     if (head === "hex" && arg !== undefined) return json(await handleHexDetail(user, arg));
     if (head === "leaderboard") return json(await handleLeaderboard(user));
+    if (head === "mine") return json(await handleMine(user));
 
     return error(ErrorCode.MALFORMED_REQUEST, `Unknown territory route: /${route.join("/")}.`, 404);
   });

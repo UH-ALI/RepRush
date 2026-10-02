@@ -203,6 +203,17 @@ async function run(): Promise<void> {
   r = await call(a, "POST", `duels/${duelId}/claim`);
   check("claiming twice is refused", r.body?.code === "ALREADY_CLAIMED", r);
 
+  console.log("\nyour territory, anywhere");
+  r = await call(a, "GET", "territory/mine");
+  const owned = Array.isArray(r.body) ? r.body : [];
+  check(
+    "A's set claimed a hex that territory/mine lists, with its outline",
+    owned.length === 1 && owned[0].yours === true && owned[0].polygon?.length === 6,
+    r,
+  );
+  r = await call(b, "GET", "territory/mine");
+  check("B, out-powered there, holds nothing", Array.isArray(r.body) && r.body.length === 0, r);
+
   console.log("\ngoing hidden");
   await call(b, "POST", "presence/off");
   beat = await call(a, "POST", "presence", at(VENUE.lat, VENUE.lng));

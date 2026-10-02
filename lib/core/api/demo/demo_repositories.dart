@@ -46,7 +46,12 @@ class DemoTerritoryRepository implements TerritoryRepository {
     );
     // The map is fetched around you, so the centre cell is where you stand.
     final home = hexContaining(cells, (swLat + neLat) / 2, (swLng + neLng) / 2);
-    if (home != null) StubWorld.claimHome(home.h3);
+    if (home != null) {
+      StubWorld.claimHome(
+        home.h3,
+        at: GeoPoint(lat: (swLat + neLat) / 2, lng: (swLng + neLng) / 2),
+      );
+    }
     final dressed = [for (final cell in cells) _dress(cell)];
     StubWorld.recordView(dressed);
     return dressed;
@@ -64,7 +69,7 @@ class DemoTerritoryRepository implements TerritoryRepository {
     }
     // Real ownership always shows as it is.
     if (cell.yours || cell.ownerHandle != null) return cell;
-    final held = StubWorld.holder(cell.h3);
+    final held = StubWorld.holder(cell.h3, at: polygonCentre(cell.polygon));
     return HexCell(
       h3: cell.h3,
       polygon: cell.polygon,
@@ -123,6 +128,38 @@ class DemoTerritoryRepository implements TerritoryRepository {
         ...?real?.recentFlips,
       ],
     );
+  }
+
+  /// Your real hexes, plus the demo's: those drawn so far, and the ones
+  /// beyond the map — each resolved once to the REAL cell at its place by a
+  /// small grid read there, so flying to it lands on a real hex.
+  @override
+  Future<List<HexCell>> myHexes() async {
+    for (final (index, point) in StubWorld.unresolvedElsewhere()) {
+      for (final pad in const [.006, .012]) {
+        final cells = await live.hexes(
+          swLat: point.lat - pad,
+          swLng: point.lng - pad,
+          neLat: point.lat + pad,
+          neLng: point.lng + pad,
+        );
+        final cell = StubWorld.cellFor(cells, point);
+        if (cell != null) {
+          StubWorld.addElsewhere(index, cell);
+          break;
+        }
+      }
+    }
+    var real = const <HexCell>[];
+    try {
+      real = await live.myHexes();
+    } on ApiException {
+      // A server without the route yet: the demo's hexes are still listed.
+    }
+    return {
+      for (final cell in real) cell.h3: cell,
+      for (final cell in StubWorld.myHexes) cell.h3: cell,
+    }.values.toList();
   }
 
   @override

@@ -221,8 +221,34 @@ abstract final class StubWorld {
     'slow_burn': 1,
   };
 
+  /// Where your hexes beyond the map lie, from where the demo began:
+  /// (bearing in degrees, distance in km). Real places, so "your territory"
+  /// can show and fly to every one of them.
+  static const _elsewhereLayout = [
+    (20.0, 3.2),
+    (95.0, 5.6),
+    (160.0, 8.4),
+    (230.0, 12.9),
+    (310.0, 19.7),
+  ];
+
   /// Hexes you hold elsewhere, beyond your map.
-  static const yourSeedHexes = 5;
+  static int get yourSeedHexes => _elsewhereLayout.length;
+
+  /// The pattern only hands you hexes this close to where the demo began;
+  /// further out the ground is the rivals', so browsing a far-off part of
+  /// the map never invents territory the board does not count.
+  static const homeRadiusM = 3000.0;
+
+  /// Where the demo began — the map's first anchor.
+  static GeoPoint? _homeAt;
+
+  /// Every hex of yours the demo has drawn, by id.
+  static final _mine = <String, HexCell>{};
+
+  /// Your hexes beyond the map, by their place in [_elsewhereLayout], once
+  /// resolved to real cells.
+  static final _elsewhere = <int, HexCell>{};
 
   /// The least power one set must earn to count for territory at all, and
   /// what claims an open hex — the server's `REPRUSH_MIN_CLAIM_POWER`.
@@ -255,6 +281,9 @@ abstract final class StubWorld {
   /// Remembers who holds what on the map just drawn.
   static void recordView(List<HexCell> cells) {
     yoursInView = cells.where((c) => c.yours).length;
+    for (final cell in cells) {
+      if (cell.yours) _mine[cell.h3] = cell;
+    }
     final rivals = <String, int>{};
     for (final cell in cells) {
       final owner = cell.ownerHandle;
@@ -271,9 +300,74 @@ abstract final class StubWorld {
     rivalHexes.forEach((handle, elsewhere) {
       counts[handle] = (counts[handle] ?? 0) + elsewhere;
     });
-    final here = yoursInView;
-    counts[you] = yourSeedHexes + (here ?? newlyHeld);
+    counts[you] = yourTotal;
     return counts;
+  }
+
+  /// Everything you hold in the demo: drawn, captured and elsewhere — the
+  /// places not yet resolved counted as the hexes they will be.
+  static int get yourTotal {
+    final ids = {
+      ..._mine.keys,
+      ..._elsewhere.values.map((c) => c.h3),
+      ..._captured.keys,
+    };
+    return ids.length + (_elsewhereLayout.length - _elsewhere.length);
+  }
+
+  /// The places of your hexes beyond the map not yet resolved to a cell,
+  /// with their index. Empty until the map has loaded once.
+  static List<(int, GeoPoint)> unresolvedElsewhere() {
+    final home = _homeAt;
+    if (home == null) return const [];
+    return [
+      for (var i = 0; i < _elsewhereLayout.length; i++)
+        if (!_elsewhere.containsKey(i))
+          (i, _offset(home, _elsewhereLayout[i].$1, _elsewhereLayout[i].$2)),
+    ];
+  }
+
+  /// The point [km] from [from] on [bearingDeg] (flat-earth — fine at
+  /// demo distances).
+  static GeoPoint _offset(GeoPoint from, double bearingDeg, double km) {
+    final b = bearingDeg * math.pi / 180;
+    final dLat = km * 1000 * math.cos(b) / _metresPerDegree;
+    final dLng =
+        km *
+        1000 *
+        math.sin(b) /
+        (_metresPerDegree * math.cos(from.lat * math.pi / 180));
+    return GeoPoint(lat: from.lat + dLat, lng: from.lng + dLng);
+  }
+
+  /// One of your far-off hexes, resolved to [cell] — yours from now on.
+  static void addElsewhere(int index, HexCell cell) {
+    _elsewhere[index] = HexCell(
+      h3: cell.h3,
+      polygon: cell.polygon,
+      ownerHandle: StubProgressionRepository.handle,
+      ownerColor: 'mine',
+      power: powerOf(cell.h3),
+      yours: true,
+    );
+  }
+
+  /// Every hex of yours the demo knows the shape of.
+  static List<HexCell> get myHexes => {
+    for (final cell in _mine.values) cell.h3: cell,
+    for (final cell in _elsewhere.values) cell.h3: cell,
+  }.values.toList();
+
+  /// The cell containing [point] among [cells], else the one nearest it.
+  static HexCell? cellFor(List<HexCell> cells, GeoPoint point) {
+    final inside = hexContaining(cells, point.lat, point.lng);
+    if (inside != null || cells.isEmpty) return inside;
+    double away(HexCell c) {
+      final centre = polygonCentre(c.polygon);
+      return distanceM(point.lat, point.lng, centre.lat, centre.lng);
+    }
+
+    return cells.reduce((a, b) => away(a) <= away(b) ? a : b);
   }
 
   /// Back to a fresh demo world.
@@ -286,6 +380,9 @@ abstract final class StubWorld {
     _startHolderPower = null;
     yoursInView = null;
     rivalsInView = const {};
+    _homeAt = null;
+    _mine.clear();
+    _elsewhere.clear();
   }
 
   /// A demo session opened in [h3]. Over a server, [wasYours] and
@@ -302,9 +399,13 @@ abstract final class StubWorld {
   /// Your demo power in [h3] — what the capture bar measures.
   static double yourPowerIn(String h3) => _myPower[h3] ?? 0;
 
-  /// Marks the hex the map first opened in. It is always a rival's, and an
-  /// easy one, so the first demo set there is a capture. First call wins.
-  static void claimHome(String h3) => _home ??= h3;
+  /// Marks the hex the map first opened in, at [at]. It is always a rival's,
+  /// and an easy one, so the first demo set there is a capture; and your
+  /// demo territory is laid out around it. First call wins.
+  static void claimHome(String h3, {GeoPoint? at}) {
+    _home ??= h3;
+    _homeAt ??= at;
+  }
 
   /// FNV-1a over the id: stable across runs and platforms, unlike
   /// `String.hashCode`, so a hex keeps its demo owner from launch to launch.
@@ -418,9 +519,10 @@ abstract final class StubWorld {
     ];
   }
 
-  /// Who holds a hex: you, a rival, or nobody (null).
-  static ({bool yours, String? owner}) holder(String id) {
-    if (_captured.containsKey(id)) {
+  /// Who holds a hex: you, a rival, or nobody (null). [at], the hex's
+  /// centre, keeps the pattern's hexes of yours near where the demo began.
+  static ({bool yours, String? owner}) holder(String id, {GeoPoint? at}) {
+    if (_captured.containsKey(id) || _elsewhere.values.any((c) => c.h3 == id)) {
       return (yours: true, owner: StubProgressionRepository.handle);
     }
     // The venue hex is "the north end of the park": always contested, so a
@@ -432,9 +534,19 @@ abstract final class StubWorld {
     // the rest split between the rivals. Works for any id — the offline
     // lattice's and real H3 cells alike.
     final k = _hash(id) % 20;
+    final rival = rivals[(_hash(id) >> 8) % rivals.length];
     if (k < 5) return (yours: false, owner: null);
-    if (k < 8) return (yours: true, owner: StubProgressionRepository.handle);
-    return (yours: false, owner: rivals[(_hash(id) >> 8) % rivals.length]);
+    if (k < 8) {
+      final home = _homeAt;
+      final far =
+          at != null &&
+          home != null &&
+          distanceM(at.lat, at.lng, home.lat, home.lng) > homeRadiusM;
+      return far
+          ? (yours: false, owner: rival)
+          : (yours: true, owner: StubProgressionRepository.handle);
+    }
+    return (yours: false, owner: rival);
   }
 
   /// A demo holder's power, on the real scale: a 20-squat set earns ~18, so
@@ -462,7 +574,11 @@ abstract final class StubWorld {
   }) {
     final midLat = (swLat + neLat) / 2;
     final kx = _kx(midLat);
-    _home ??= hexAt(midLat, (swLng + neLng) / 2);
+    final midLng = (swLng + neLng) / 2;
+    claimHome(
+      hexAt(midLat, midLng),
+      at: GeoPoint(lat: midLat, lng: midLng),
+    );
     final rowStep = radiusM * 1.5;
     final colStep = radiusM * math.sqrt(3);
     final rMin = (swLat * _metresPerDegree / rowStep).floor() - 1;
@@ -480,7 +596,7 @@ abstract final class StubWorld {
           continue;
         }
         final id = _idOf(q, r);
-        final held = holder(id);
+        final held = holder(id, at: _centre(q, r, kx));
         final power = isCaptured(id) ? yourPowerIn(id) : powerOf(id);
         cells.add(
           HexCell(
@@ -498,7 +614,6 @@ abstract final class StubWorld {
         );
       }
     }
-    recordView(cells);
     return cells;
   }
 
@@ -519,12 +634,30 @@ class StubTerritoryRepository implements TerritoryRepository {
     // H3 boundaries are computed by the live Edge Function. The Flutter stub
     // cannot import the server-only H3 package, so it draws [StubWorld]'s
     // lattice with the same wire shape and ownership semantics.
-    return StubWorld.cellsIn(
+    final cells = StubWorld.cellsIn(
       swLat: swLat,
       swLng: swLng,
       neLat: neLat,
       neLng: neLng,
     );
+    StubWorld.recordView(cells);
+    return cells;
+  }
+
+  @override
+  Future<List<HexCell>> myHexes() async {
+    // Resolve the far-off hexes on the offline lattice, then list them all.
+    for (final (index, point) in StubWorld.unresolvedElsewhere()) {
+      final cells = StubWorld.cellsIn(
+        swLat: point.lat - .006,
+        swLng: point.lng - .006,
+        neLat: point.lat + .006,
+        neLng: point.lng + .006,
+      );
+      final cell = StubWorld.cellFor(cells, point);
+      if (cell != null) StubWorld.addElsewhere(index, cell);
+    }
+    return StubWorld.myHexes;
   }
 
   @override
