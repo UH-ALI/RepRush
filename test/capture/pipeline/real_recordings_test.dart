@@ -3,7 +3,17 @@
 /// calibration as soon as enough samples exist.
 ///
 /// Fixtures live in `test/capture/fixtures_real/`, separate from the
-/// synthetic squat fixtures that `replay_test.dart` runs.
+/// synthetic squat fixtures that `replay_test.dart` runs. Numbers only: body
+/// point positions and confidences, never an image.
+///
+/// How to read the expected counts:
+///  * `push_up_20_slow`: the athlete did exactly 20 (ground truth).
+///  * `pull_up_video_a/b`: a screen video of pull-ups, trimmed. The posture
+///    rule separates real reps from hand-drops there (b: 9 real, 7 hand-drops
+///    rejected). a: ~20 in the first 30 s matches the athlete's own count.
+///  * `*_device_run`: runs on the phone that the athlete judged correct; the
+///    replay reproduces the on-device count exactly, so they are regression
+///    snapshots for any later change to counting.
 library;
 
 import 'dart:convert';
