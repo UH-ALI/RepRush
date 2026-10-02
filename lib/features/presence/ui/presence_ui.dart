@@ -15,6 +15,7 @@ import 'package:reprush/features/challenges/ui/duel_widgets.dart';
 import 'package:reprush/features/presence/data/presence_providers.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/async_current.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
 /// The colour other athletes wear on the map — distinct from rival hexes
@@ -85,7 +86,7 @@ class _VisibilitySheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visible = ref.watch(presenceVisibleProvider).value ?? false;
-    final players = ref.watch(nearbyPlayersProvider).value ?? const [];
+    final players = ref.watch(nearbyPlayersProvider).unlessFailed ?? const [];
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(RepRushTokens.spaceLg),

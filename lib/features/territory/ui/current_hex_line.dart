@@ -13,6 +13,7 @@ import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/async_current.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
 class CurrentHexLine extends ConsumerWidget {
@@ -26,8 +27,8 @@ class CurrentHexLine extends ConsumerWidget {
     if (cell == null || cell.yours) return HexStatusLine(cell: cell);
 
     // Your power here. A hex nobody has trained in has no record yet, which
-    // is simply zero.
-    final yourPower = ref.watch(hexDetailProvider(cell.h3)).value?.yourPower;
+    // is simply zero. `current`: never another mode's number.
+    final yourPower = ref.watch(hexDetailProvider(cell.h3)).current?.yourPower;
     final unclaimed = cell.ownerHandle == null;
     final target = unclaimed ? claimFloorPower : cell.power;
 

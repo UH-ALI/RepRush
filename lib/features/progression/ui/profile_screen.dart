@@ -16,6 +16,7 @@ import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/features/progression/ui/account_sheets.dart';
 import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/async_current.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
@@ -26,7 +27,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider);
     final movements = ref.watch(movementsProvider);
-    final board = ref.watch(leaderboardProvider).value ?? const [];
+    final board = ref.watch(leaderboardProvider).unlessFailed ?? const [];
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(

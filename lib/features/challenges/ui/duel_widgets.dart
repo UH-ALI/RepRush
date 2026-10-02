@@ -17,6 +17,7 @@ import 'package:reprush/features/presence/ui/presence_ui.dart';
 import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/features/session/ui/training_flow.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/async_current.dart';
 import 'package:reprush/shared/errors.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
@@ -148,7 +149,7 @@ class MapDuelBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final duels = ref.watch(duelsProvider).value ?? const [];
+    final duels = ref.watch(duelsProvider).unlessFailed ?? const [];
     final duel = headlineDuel(duels);
     if (duel == null) return const SizedBox.shrink();
     return Padding(
@@ -164,7 +165,7 @@ class DuelsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final duels = ref.watch(duelsProvider).value ?? const [];
+    final duels = ref.watch(duelsProvider).unlessFailed ?? const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -207,7 +208,7 @@ class SetDuelCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final duels = ref.watch(duelsProvider).value ?? const [];
+    final duels = ref.watch(duelsProvider).unlessFailed ?? const [];
     final duel = duels
         .where(
           (d) =>

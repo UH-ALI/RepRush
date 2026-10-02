@@ -33,6 +33,7 @@ import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/features/territory/ui/basemap.dart';
 import 'package:reprush/features/territory/ui/current_hex_line.dart';
 import 'package:reprush/models/models.dart';
+import 'package:reprush/shared/async_current.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
@@ -166,7 +167,7 @@ class _MapViewState extends ConsumerState<_MapView>
     final here = ref.watch(hereProvider) ?? widget.location;
     final current = ref.watch(currentHexProvider);
     final visible = ref.watch(presenceVisibleProvider).value ?? false;
-    final players = ref.watch(nearbyPlayersProvider).value ?? const [];
+    final players = ref.watch(nearbyPlayersProvider).unlessFailed ?? const [];
     // One marker per hex: presence is hex-level, so athletes sharing a hex
     // share a spot on the map.
     final playersByHex = <String, List<NearbyPlayer>>{};
@@ -177,7 +178,9 @@ class _MapViewState extends ConsumerState<_MapView>
     final yours = cells.where((c) => c.yours).length;
     // Your territory beyond the loaded grid: only your own hexes, so a few
     // dozen polygons at most however far they are spread.
-    final mine = ref.watch(myHexesProvider).value ?? const <HexCell>[];
+    // `current`: only this mode's territory — never the demo's hexes left
+    // over on the live map while it reloads, or after its load fails.
+    final mine = ref.watch(myHexesProvider).current ?? const <HexCell>[];
     final loaded = {for (final c in cells) c.h3};
     final far = [
       for (final c in mine)
@@ -607,7 +610,7 @@ class _MapViewState extends ConsumerState<_MapView>
     ref.read(mapFocusProvider.notifier).clear();
     final cell =
         widget.cells.where((c) => c.h3 == h3).firstOrNull ??
-        ref.read(myHexesProvider).value?.where((c) => c.h3 == h3).firstOrNull;
+        ref.read(myHexesProvider).current?.where((c) => c.h3 == h3).firstOrNull;
     if (cell == null) return;
     final centre = polygonCentre(cell.polygon);
     _mapController.move(LatLng(centre.lat, centre.lng), _focusZoom);
