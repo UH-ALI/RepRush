@@ -95,8 +95,11 @@ class PipelineTraceRecorder {
   }
 
   /// Serialises the whole session for pull-and-inspect (`adb logcat`).
-  String exportJson({String movement = 'squat'}) {
-    return jsonEncode({'movement': movement, 'entries': _entries});
+  String exportJson({
+    String movement = 'squat',
+    Map<String, Object?> meta = const {},
+  }) {
+    return jsonEncode({'movement': movement, ...meta, 'entries': _entries});
   }
 
   void clear() {

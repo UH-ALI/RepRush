@@ -18,6 +18,7 @@ import 'package:reprush/features/capture/camera/coordinates.dart';
 import 'package:reprush/features/capture/camera/input_image_adapter.dart';
 import 'package:reprush/features/capture/camera/movement_landmarks.dart';
 import 'package:reprush/features/capture/camera/pose_service.dart';
+import 'package:reprush/features/capture/data/trace_files.dart';
 import 'package:reprush/features/capture/pipeline/evidence.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
@@ -174,8 +175,8 @@ class CaptureController extends Notifier<CaptureStatus> {
     _framesDropped = 0;
     _calibDiagLogged = false;
     // Debug-only fixture capture — release builds never allocate it.
-    _traceRecorder = kDebugMode ? TraceRecorder() : null;
-    _diagRecorder = kDebugMode
+    _traceRecorder = recordingEnabled ? TraceRecorder() : null;
+    _diagRecorder = recordingEnabled
         ? PipelineTraceRecorder(chain: config.chain)
         : null;
     pipelineFrames.value = null;
@@ -214,6 +215,7 @@ class CaptureController extends Notifier<CaptureStatus> {
         'export via exportDiagnosticsToLog() to pull tuning evidence.',
       );
     }
+    _saveRecordings();
     _sessionClock?.stop();
     _sessionClock = null;
     _repEvents.clear();
@@ -224,6 +226,40 @@ class CaptureController extends Notifier<CaptureStatus> {
     _traceRecorder = null;
     _diagRecorder = null;
     pipelineFrames.value = null;
+  }
+
+  /// Saves the landmark trace and the diagnostics of this session to files
+  /// on the phone when built with `REPRUSH_RECORD=true` (see
+  /// `trace_files.dart`). Numbers only, local only, never part of Evidence.
+  /// What the app itself counted and the mean fps go into the file so the
+  /// recording can be compared with the athlete's own tally.
+  void _saveRecordings() {
+    if (!kRecordTraces) return;
+    final config = _pipeline?.config;
+    final recorder = _traceRecorder;
+    if (config == null || recorder == null || recorder.frameCount == 0) return;
+    final elapsedMs = _sessionClock?.elapsedMilliseconds ?? 0;
+    final meta = <String, Object?>{
+      'appCountedReps': _pipeline?.repCount ?? 0,
+      'durationMs': elapsedMs,
+      'fpsMean': elapsedMs > 0 ? _framesTotal * 1000 / elapsedMs : null,
+      'build': kReleaseMode ? 'release' : (kProfileMode ? 'profile' : 'debug'),
+      'recordedAt': DateTime.now().toIso8601String(),
+    };
+    final tracePath = writeTraceFile(
+      kind: 'trace',
+      movement: config.id,
+      json: recorder.exportJson(movement: config.id, meta: meta),
+    );
+    final diag = _diagRecorder;
+    if (diag != null && diag.entryCount > 0) {
+      writeTraceFile(
+        kind: 'diag',
+        movement: config.id,
+        json: diag.exportJson(movement: config.id, meta: meta),
+      );
+    }
+    if (tracePath != null) debugPrint('RepRush trace saved: $tracePath');
   }
 
   /// Fixture JSON for the current debug session (null outside debug or
