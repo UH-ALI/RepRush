@@ -120,10 +120,12 @@ void main() {
     final m = machine();
     var t = 0;
     RepEvent? event;
+    // 100 ms steps: a ~0.5 s rep, comfortably above the 400 ms floor that
+    // rejects jitter (a 330 ms "rep" is not physically possible).
     for (final angle in <double>[175.0, 160, 120, 75, 90, 120, 155]) {
       final result = m.tick(angle, 0.9, t);
       if (result.emitted != null) event = result.emitted;
-      t += 66;
+      t += 100;
     }
     expect(event, isNotNull);
     expect(event!.peakExtreme, closeTo(75, 1e-9));

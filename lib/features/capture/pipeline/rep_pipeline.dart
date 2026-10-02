@@ -15,6 +15,7 @@ import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/idle_monitor.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
 import 'package:reprush/features/capture/pipeline/presence_monitor.dart';
+import 'package:reprush/features/capture/pipeline/rep_context.dart';
 import 'package:reprush/features/capture/pipeline/rep_machine.dart';
 import 'package:reprush/features/capture/pipeline/side_selector.dart';
 import 'package:reprush/features/capture/pipeline/types.dart';
@@ -115,7 +116,9 @@ enum SetEndReason { idle, leftFrame }
 /// The movement's [MovementConfig] supplies the joint chain, thresholds,
 /// and coaching vocabulary — the engine itself is movement-agnostic.
 class RepPipeline {
-  RepPipeline(this.config) : _calibration = CalibrationCapture(config);
+  RepPipeline(this.config)
+    : _calibration = CalibrationCapture(config),
+      _emaFast = EmaFilter(alpha: config.emaAlpha);
 
   final MovementConfig config;
 
@@ -126,7 +129,12 @@ class RepPipeline {
   /// still enforces its own minimum.
   static const int _calibrationFrames = 30;
 
+  /// Steady filter: calibration samples and the calibration-phase display.
   final EmaFilter _ema = EmaFilter();
+
+  /// The signal the rep machine decides on; its weight is per movement
+  /// (`MovementConfig.emaAlpha`) so quick arm movements are not flattened.
+  final EmaFilter _emaFast;
   final CalibrationCapture _calibration;
   final FeedbackDebouncer _debouncer = FeedbackDebouncer();
   final SetIdleMonitor _idle = SetIdleMonitor();
@@ -184,7 +192,7 @@ class RepPipeline {
       _lostStreak += 1;
       final machine = _machine;
       final result = !_calibrating && machine != null
-          ? machine.tickLost()
+          ? machine.tickLost(timestampMs: frame.timestampMs)
           : null;
       final lost = _lostStreak >= _lostAfterFrames;
       // Lost frames still advance the idle clock: an athlete who walked
@@ -251,7 +259,8 @@ class RepPipeline {
     // sustained loss — the "Tracking lost" cue would fire inconsistently.
     if (_lostStreak > 0) _lostStreak -= 1;
     final raw = jointAngle(selected.proximal, selected.vertex, selected.distal);
-    final smoothed = _ema.update(raw);
+    final calibSignal = _ema.update(raw);
+    final smoothed = _emaFast.update(raw);
 
     if (_calibrating) {
       // Pixel scale refs for Evidence calibration — torso length from
@@ -276,7 +285,7 @@ class RepPipeline {
             )
           : null;
       _calibration.addSample(
-        signal: smoothed,
+        signal: calibSignal,
         torsoLengthPx: torsoLen,
         shoulderWidthPx: shoulderW,
       );
@@ -290,7 +299,7 @@ class RepPipeline {
           activeSide: selected.side,
         ),
         rawAngle: raw,
-        smoothedAngle: smoothed,
+        smoothedAngle: calibSignal,
         justEmitted: null,
         calibrating: true,
         selectedSide: selected.side,
@@ -309,6 +318,7 @@ class RepPipeline {
       smoothed,
       selected.minVisibility,
       frame.timestampMs,
+      contextOk: frameContextOk(config.context, frame.landmarks, selected.side),
     );
     final idle = _idle.tick(
       phase: result.phase,
@@ -397,6 +407,7 @@ class RepPipeline {
     _calibrating = true;
     _machine = null;
     _ema.reset();
+    _emaFast.reset();
     _calibration.reset();
     _debouncer.reset();
     _idle.reset();

@@ -40,6 +40,20 @@ enum JointChain {
       ];
 }
 
+/// A posture rule that must hold for the WHOLE rep for it to count. It stops
+/// the counter mistaking other bends of the same joint for the exercise.
+enum RepContext {
+  /// No rule (squat, push-up).
+  none,
+
+  /// Pull-up family: the wrist stays above the shoulder and the elbow for the
+  /// whole rep. Letting go of the bar and dropping the hands bends the elbow
+  /// exactly like a pull-up top, but the wrist ends up far BELOW the shoulder
+  /// (measured: real reps never below +0.06 arm-lengths, hand-drops reach
+  /// -0.85 and lower) — see `rep_context.dart`.
+  handsAboveShoulders,
+}
+
 /// Per-movement coaching vocabulary — the engine picks cues by phase, the
 /// movement supplies the wording. Defaults are the squat-proven strings;
 /// movements whose phrasing differs (arm chains) override only what they
@@ -96,9 +110,43 @@ class MovementConfig {
     this.maxRestSpread,
     this.minRestAngle,
     this.maxRestAngle,
+    this.context = RepContext.none,
+    this.countAtPeak = false,
+    this.confirmAfterPeakMs = 350,
+    this.minRepMs = 400,
+    this.maxRepMs = 10000,
+    this.lostResetMs = 3000,
+    this.emaAlpha = 0.35,
   });
 
   final String id;
+
+  /// Smoothing of the signal the rep machine decides on (EMA weight of the
+  /// newest frame). 0.35 suits slow, deep movements like squats. Arm
+  /// movements are quicker and the phone delivers only ~9-10 frames/s, so
+  /// 0.35 flattens a fast rep until it never reaches the thresholds
+  /// (simulated on a real 20-rep set: at 2x speed and 70% depth it counted
+  /// 3 of 20; 0.6 counts 19). Calibration keeps the steadier 0.35 filter.
+  final double emaAlpha;
+
+  /// Posture rule that must hold for the whole rep (see [RepContext]).
+  final RepContext context;
+
+  /// Count the rep at its peak (the top of a pull-up) instead of on the
+  /// return to rest. The count is confirmed [confirmAfterPeakMs] after the
+  /// peak so a hand-drop that follows the peak can still veto it.
+  final bool countAtPeak;
+  final int confirmAfterPeakMs;
+
+  /// A rep shorter than this is jitter, longer than [maxRepMs] is the athlete
+  /// stuck or resting mid-rep. Measured real reps: 0.8 to 5.5 s.
+  final int minRepMs;
+  final int maxRepMs;
+
+  /// Tracking lost this long mid-rep discards the rep. Time-based on purpose:
+  /// the device delivers ~9-10 fps, not the 15 a frame count assumed, and the
+  /// pose detector drops the whole body for 1-4 s at awkward moments.
+  final int lostResetMs;
 
   /// The 3-point joint chain the angle signal is measured on.
   final JointChain chain;
@@ -166,6 +214,7 @@ const pushUpConfig = MovementConfig(
   enterRestOffset: -20.0,
   romTargetOffset: -90.0,
   decreasing: true,
+  emaAlpha: 0.6,
   cues: FeedbackCues(
     calibrating: 'Hold the top position — calibrating',
     ready: 'Ready',
@@ -215,6 +264,9 @@ const pullUpConfig = MovementConfig(
   // UNTUNED — dead-hang naturally swings more than a held plank or standing rest;
   // looser than squat/push-up's default (8.0°). Placeholder pending real data.
   maxRestSpread: 12.0,
+  context: RepContext.handsAboveShoulders,
+  countAtPeak: true,
+  emaAlpha: 0.6,
   cues: FeedbackCues(
     calibrating: 'Hang still in dead-hang — calibrating',
     ready: 'Ready to pull',
@@ -234,4 +286,3 @@ const pullUpConfig = MovementConfig(
         'stay visible at both dead-hang and the top of the rep',
   ),
 );
-
