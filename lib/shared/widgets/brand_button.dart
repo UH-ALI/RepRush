@@ -22,10 +22,21 @@ class BrandButton extends StatelessWidget {
         onPressed: loading ? null : onPressed,
         icon: loading ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(icon ?? Icons.arrow_forward),
         label: Text(label),
+        // The container above paints the button; the Material button inside
+        // must match its shape and stay transparent — including disabled,
+        // where Material's default grey stadium would otherwise sit inside
+        // the rounded rectangle with the corners showing around it.
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
+          disabledBackgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
+          disabledForegroundColor: Colors.white60,
+          disabledIconColor: Colors.white60,
           shadowColor: Colors.transparent,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(RepRushTokens.cornerChip),
+          ),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
