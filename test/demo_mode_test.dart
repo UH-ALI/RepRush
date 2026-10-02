@@ -68,14 +68,37 @@ void main() {
   Future<List<HexCell>> map() =>
       demo.hexes(swLat: 0, swLng: 0, neLat: 1, neLng: 1);
 
-  test('before any demo set, the demo map IS the live map', () async {
+  test('real owners stay; open ground fills with the demo rivals', () async {
     final cells = await map();
+    final rival = cells.firstWhere((c) => c.h3 == 'rival_hex');
+    expect(rival.ownerHandle, 'Blue Man');
+    expect(cells.firstWhere((c) => c.h3 == 'mine_hex').yours, isTrue);
+
+    // Ground nobody really holds gets the fixed demo pattern.
+    final open = cells.firstWhere((c) => c.h3 == 'open_hex');
+    final expected = StubWorld.holder('open_hex');
+    expect(open.yours, expected.yours);
+    if (!expected.yours) expect(open.ownerHandle, expected.owner);
+    // …and the same pattern every time.
     expect(
-      cells.firstWhere((c) => c.h3 == 'rival_hex').ownerHandle,
-      'Blue Man',
+      (await map()).firstWhere((c) => c.h3 == 'open_hex').ownerHandle,
+      open.ownerHandle,
     );
-    expect(cells.where((c) => c.yours).map((c) => c.h3), ['mine_hex']);
-    expect((await demo.leaderboard()).single.handle, 'Blue Man');
+  });
+
+  test('the board is busy: demo rivals, real holders, and you', () async {
+    final board = await demo.leaderboard();
+    final handles = board.map((r) => r.handle).toList();
+    expect(handles.first, 'iron_meridian');
+    expect(handles, containsAll(['rival_kat', 'Blue Man', 'Me']));
+    expect(
+      board.firstWhere((r) => r.handle == 'Me').hexesHeld,
+      StubWorld.yourSeedHexes,
+    );
+    expect(
+      [for (final r in board) r.rank],
+      [for (var i = 1; i <= board.length; i++) i],
+    );
   });
 
   test('a demo set in a rival hex captures it — on this phone only', () async {
@@ -86,17 +109,16 @@ void main() {
     expect(result.hexResult?.h3, 'rival_hex');
     expect(result.hexResult?.captured, isTrue);
 
-    final cells = await map();
-    final taken = cells.firstWhere((c) => c.h3 == 'rival_hex');
+    final taken = (await map()).firstWhere((c) => c.h3 == 'rival_hex');
     expect(taken.yours, isTrue);
     expect(taken.ownerColor, 'mine');
 
-    // You overtake Blue Man on the board.
+    // One more hex on your row of the board.
     final board = await demo.leaderboard();
-    expect(board.first.handle, 'Me');
-    expect(board.first.hexesHeld, 1);
-    expect(board.first.rank, 1);
-    expect(board[1].handle, 'Blue Man');
+    expect(
+      board.firstWhere((r) => r.handle == 'Me').hexesHeld,
+      StubWorld.yourSeedHexes + 1,
+    );
   });
 
   test('a set in a hex you already hold adds power, not a capture', () async {
@@ -105,8 +127,11 @@ void main() {
       _set('squat', 10),
     );
     expect(result.hexResult?.captured, isFalse);
-    // Nothing new held, so the board is untouched.
-    expect((await demo.leaderboard()).single.handle, 'Blue Man');
+    // Nothing new held, so your row is untouched.
+    expect(
+      (await demo.leaderboard()).firstWhere((r) => r.handle == 'Me').hexesHeld,
+      StubWorld.yourSeedHexes,
+    );
   });
 
   test('the demo score comes from the set you did', () async {

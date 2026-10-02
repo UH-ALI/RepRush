@@ -180,7 +180,33 @@ abstract final class StubWorld {
   /// Centre-to-corner, metres — about a res-8 cell's edge.
   static const radiusM = 461.0;
 
-  static const rivals = ['rival_kat', 'iron_meridian', 'parkside_crew'];
+  /// The athletes who "hold" the demo's ground — the same names the scripted
+  /// nearby players, duels and the demo leaderboard use.
+  static const rivals = [
+    'rival_kat',
+    'iron_meridian',
+    'parkside_crew',
+    'north_bar_owl',
+    'plank_pilgrim',
+    'dip_machine',
+  ];
+
+  /// Hexes the demo board credits each rival with — more than any one map
+  /// shows, as on a real board.
+  static const rivalHexes = {
+    'iron_meridian': 9,
+    'rival_kat': 7,
+    'parkside_crew': 6,
+    'north_bar_owl': 4,
+    'plank_pilgrim': 3,
+    'dip_machine': 3,
+    'muscle_up_mo': 2,
+    'sunrise_squat': 1,
+    'slow_burn': 1,
+  };
+
+  /// Hexes the demo board credits you with before any demo capture.
+  static const yourSeedHexes = 5;
 
   /// Hexes captured in the demo → whether each was already yours before.
   static final _captured = <String, bool>{};
@@ -210,6 +236,20 @@ abstract final class StubWorld {
 
   /// True once a demo set has landed in [h3].
   static bool isCaptured(String h3) => _captured.containsKey(h3);
+
+  /// Marks the hex the map first opened in. It is always a rival's, so the
+  /// first demo set there is a capture. Only the first call counts.
+  static void claimHome(String h3) => _home ??= h3;
+
+  /// FNV-1a over the id: stable across runs and platforms, unlike
+  /// `String.hashCode`, so a hex keeps its demo owner from launch to launch.
+  static int _hash(String id) {
+    var h = 0x811c9dc5;
+    for (final unit in id.codeUnits) {
+      h = ((h ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return h;
+  }
 
   /// Hexes the demo made yours that were not yours already.
   static int get newlyHeld => _captured.values.where((was) => !was).length;
@@ -294,19 +334,16 @@ abstract final class StubWorld {
     if (id == _home || id == DemoVenue.demoHexH3) {
       return (yours: false, owner: rivals.first);
     }
-    final cell = _parse(id);
-    if (cell == null) return (yours: false, owner: null);
-    final k = ((cell.q * 73856093) ^ (cell.r * 19349663)).abs() % 9;
-    if (k < 3) return (yours: false, owner: null);
-    if (k < 5) return (yours: true, owner: StubProgressionRepository.handle);
-    return (yours: false, owner: rivals[k % rivals.length]);
+    // A busy neighbourhood: about a quarter open ground, a few of yours,
+    // the rest split between the rivals. Works for any id — the offline
+    // lattice's and real H3 cells alike.
+    final k = _hash(id) % 20;
+    if (k < 5) return (yours: false, owner: null);
+    if (k < 8) return (yours: true, owner: StubProgressionRepository.handle);
+    return (yours: false, owner: rivals[(_hash(id) >> 8) % rivals.length]);
   }
 
-  static double powerOf(String id) {
-    final cell = _parse(id);
-    if (cell == null) return 0;
-    return 180.0 + ((cell.q * 53 + cell.r * 31).abs() % 900);
-  }
+  static double powerOf(String id) => 180.0 + ((_hash(id) >> 4) % 900);
 
   /// A set landed in [id]: it is yours now. Returns whether that changed hands.
   static bool capture(String id) {
@@ -432,19 +469,13 @@ class StubTerritoryRepository implements TerritoryRepository {
   Future<List<LeaderboardRow>> leaderboard() async {
     // Stub: a seeded 10-row board with you climbing it as you capture.
     final rows = [
-      (handle: 'iron_meridian', hexes: 9),
-      (handle: 'rival_kat', hexes: 7),
-      (handle: 'parkside_crew', hexes: 6),
+      for (final MapEntry(key: handle, value: hexes)
+          in StubWorld.rivalHexes.entries)
+        (handle: handle, hexes: hexes),
       (
         handle: StubProgressionRepository.handle,
-        hexes: 5 + StubWorld.newlyHeld,
+        hexes: StubWorld.yourSeedHexes + StubWorld.newlyHeld,
       ),
-      (handle: 'north_bar_owl', hexes: 4),
-      (handle: 'plank_pilgrim', hexes: 3),
-      (handle: 'dip_machine', hexes: 3),
-      (handle: 'muscle_up_mo', hexes: 2),
-      (handle: 'sunrise_squat', hexes: 1),
-      (handle: 'slow_burn', hexes: 1),
     ]..sort((a, b) => b.hexes.compareTo(a.hexes));
     return [
       for (var i = 0; i < rows.length; i++)
@@ -844,7 +875,7 @@ class StubPresenceRepository implements PresenceRepository {
   ];
 
   /// Which of the cells nearest you each player stands in (0 is your own).
-  static const _cellRanks = [1, 3, 5];
+  static const _cellRanks = [1, 2, 4];
 
   bool visible = false;
 
@@ -854,13 +885,17 @@ class StubPresenceRepository implements PresenceRepository {
     // The same grid the map draws around this fix, so each player sits in
     // the centre of a visible hex.
     final cells = await _cells(location);
-    if (cells.length <= _cellRanks.last) return const [];
+    if (cells.length < 2) return const [];
     double away(HexCell c) {
       final centre = polygonCentre(c.polygon);
       return distanceM(location.lat, location.lng, centre.lat, centre.lng);
     }
 
     final nearest = [...cells]..sort((a, b) => away(a).compareTo(away(b)));
+    final spots = [
+      for (final rank in _cellRanks)
+        nearest[math.min(rank, nearest.length - 1)],
+    ];
     return [
       for (var i = 0; i < players.length; i++)
         NearbyPlayer(
@@ -868,8 +903,8 @@ class StubPresenceRepository implements PresenceRepository {
           handle: players[i].handle,
           level: players[i].level,
           hexesHeld: players[i].hexes,
-          h3: nearest[_cellRanks[i]].h3,
-          centre: polygonCentre(nearest[_cellRanks[i]].polygon),
+          h3: spots[i].h3,
+          centre: polygonCentre(spots[i].polygon),
         ),
     ];
   }

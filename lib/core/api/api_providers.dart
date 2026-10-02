@@ -186,10 +186,10 @@ final presenceRepositoryProvider = Provider<PresenceRepository>((ref) {
     cellsAround: server == null
         ? null
         : (at) => LiveTerritoryRepository(transport: server).hexes(
-            swLat: at.lat - .01,
-            swLng: at.lng - .01,
-            neLat: at.lat + .01,
-            neLng: at.lng + .01,
+            swLat: at.lat - .02,
+            swLng: at.lng - .02,
+            neLat: at.lat + .02,
+            neLng: at.lng + .02,
           ),
   );
 });

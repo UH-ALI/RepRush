@@ -1,31 +1,34 @@
-/// Demo over the real game — the repositories that make Demo mode look exactly
-/// like Live while keeping every demo result on this phone.
+/// Demo over the real game — the repositories that make Demo mode look like
+/// Live on a busy day, while keeping everything a demo does on this phone.
 ///
 /// Ownership: B.
 ///
-/// WHAT IS REAL AND WHAT IS NOT. With a server configured, Demo reads the real
-/// map, real owners, the real leaderboard, your real profile and the real daily
-/// challenge. Three things are simulated: a set's score (the stub session
-/// repository scores it locally and never submits), the athletes nearby (the
-/// scripted rivals) and the hexes your demo sets capture. Those captures live
-/// in [StubWorld] and are painted over the real territory here, so the map,
-/// the hex count and the leaderboard all react to a demo set — and nothing on
-/// the server, nobody else's map and no real score ever changes.
+/// WHAT IS REAL AND WHAT IS NOT. With a server configured, Demo draws the REAL
+/// hex grid around wherever you stand, and keeps every real owner on it. The
+/// ground nobody really holds is then filled in with the demo's rivals (and a
+/// few hexes of yours), so the map looks like a neighbourhood people are
+/// actually fighting over — the same fixed pattern every launch. The board is
+/// the same blend: the demo's rivals, you, and any real holders. Your sets are
+/// scored on the phone and never submitted, the athletes nearby and their duels
+/// are scripted, and the hexes your demo sets capture turn yours here and only
+/// here (all in [StubWorld]). Nothing on the server, nobody else's map and no
+/// real score ever changes.
 library;
 
 import 'dart:math' as math;
 
 import 'package:reprush/core/api/repositories.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart';
+import 'package:reprush/core/location/geo.dart';
 import 'package:reprush/models/models.dart';
 
-/// Live territory with the demo's captures painted on top.
+/// Live territory, populated with the demo's rivals and your demo captures.
 class DemoTerritoryRepository implements TerritoryRepository {
   const DemoTerritoryRepository({required this.live, required this.myHandle});
 
   final TerritoryRepository live;
 
-  /// Your real handle, for the leaderboard row the demo adds to.
+  /// Your real handle, for your row on the demo board.
   final Future<String> Function() myHandle;
 
   @override
@@ -41,40 +44,68 @@ class DemoTerritoryRepository implements TerritoryRepository {
       neLat: neLat,
       neLng: neLng,
     );
-    return [
-      for (final cell in cells)
-        StubWorld.isCaptured(cell.h3) && !cell.yours
-            ? HexCell(
-                h3: cell.h3,
-                polygon: cell.polygon,
-                ownerColor: 'mine',
-                power: math.max(cell.power, 1),
-                yours: true,
-              )
-            : cell,
-    ];
+    // The map is fetched around you, so the centre cell is where you stand.
+    final home = hexContaining(cells, (swLat + neLat) / 2, (swLng + neLng) / 2);
+    if (home != null) StubWorld.claimHome(home.h3);
+    return [for (final cell in cells) _dress(cell)];
+  }
+
+  HexCell _dress(HexCell cell) {
+    if (StubWorld.isCaptured(cell.h3)) {
+      return HexCell(
+        h3: cell.h3,
+        polygon: cell.polygon,
+        ownerColor: 'mine',
+        power: math.max(cell.power, StubWorld.powerOf(cell.h3)),
+        yours: true,
+      );
+    }
+    // Real ownership always shows as it is.
+    if (cell.yours || cell.ownerHandle != null) return cell;
+    final held = StubWorld.holder(cell.h3);
+    return HexCell(
+      h3: cell.h3,
+      polygon: cell.polygon,
+      ownerHandle: held.yours ? null : held.owner,
+      ownerColor: held.yours
+          ? 'mine'
+          : held.owner == null
+          ? 'unclaimed'
+          : 'rival',
+      power: held.owner == null ? 0 : StubWorld.powerOf(cell.h3),
+      yours: held.yours,
+    );
   }
 
   @override
   Future<HexDetail> hexDetail(String h3) async {
-    if (!StubWorld.isCaptured(h3)) return live.hexDetail(h3);
-    final handle = await myHandle();
     HexDetail? real;
     try {
       real = await live.hexDetail(h3);
     } on ApiException catch (e) {
-      // A hex nobody has ever trained in has no record on the server.
+      // A hex nobody has ever really trained in has no record on the server.
       if (e.code != ApiErrorCode.unknownHex) rethrow;
     }
-    final power = math.max(real?.power ?? 0, 1).toDouble();
+    final captured = StubWorld.isCaptured(h3);
+    if (!captured && real?.ownerHandle != null) return real!;
+    final handle = await myHandle();
+    final held = captured ? (yours: true, owner: handle) : StubWorld.holder(h3);
+    final owner = held.yours ? handle : held.owner;
+    final power = math.max(real?.power ?? 0, StubWorld.powerOf(h3));
+    final now = DateTime.now();
     return HexDetail(
       h3: h3,
-      ownerHandle: handle,
-      power: power,
-      yourPower: power,
+      ownerHandle: owner,
+      power: owner == null ? 0 : power,
+      yourPower: held.yours ? power : 0,
       spots: real?.spots ?? const [],
       recentFlips: [
-        HexFlip(handle: handle, atMs: DateTime.now().millisecondsSinceEpoch),
+        if (owner != null)
+          HexFlip(
+            handle: owner,
+            atMs: (captured ? now : now.subtract(const Duration(hours: 5)))
+                .millisecondsSinceEpoch,
+          ),
         ...?real?.recentFlips,
       ],
     );
@@ -82,14 +113,14 @@ class DemoTerritoryRepository implements TerritoryRepository {
 
   @override
   Future<List<LeaderboardRow>> leaderboard() async {
-    final rows = await live.leaderboard();
-    final extra = StubWorld.newlyHeld;
-    if (extra == 0) return rows;
+    final real = await live.leaderboard();
     final handle = await myHandle();
-    final counts = <String, int>{
-      for (final row in rows) row.handle: row.hexesHeld,
-    };
-    counts[handle] = (counts[handle] ?? 0) + extra;
+    final counts = <String, int>{...StubWorld.rivalHexes};
+    for (final row in real) {
+      counts[row.handle] = (counts[row.handle] ?? 0) + row.hexesHeld;
+    }
+    counts[handle] =
+        (counts[handle] ?? 0) + StubWorld.yourSeedHexes + StubWorld.newlyHeld;
     // On a tie you rank first: you are the one who just took ground.
     final ranked = counts.entries.toList()
       ..sort((a, b) {
