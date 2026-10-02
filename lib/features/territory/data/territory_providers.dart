@@ -128,6 +128,15 @@ final myHexesProvider = FutureProvider<List<HexCell>>((ref) async {
   return ref.watch(territoryRepositoryProvider).myHexes();
 });
 
+/// `GET /territory/history/:h3` — the latest sets trained in a hex. Read
+/// only when its sheet opens; refreshed after each set.
+final hexHistoryProvider = FutureProvider.family<List<HexActivity>, String>((
+  ref,
+  h3,
+) {
+  return ref.watch(territoryRepositoryProvider).hexHistory(h3);
+});
+
 /// `GET /territory/hex/:h3` — owner, power, your power, spots, recent flips.
 final hexDetailProvider = FutureProvider.family<HexDetail, String>((ref, h3) {
   return ref.watch(territoryRepositoryProvider).hexDetail(h3);

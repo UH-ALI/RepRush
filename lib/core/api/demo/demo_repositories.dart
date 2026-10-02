@@ -162,6 +162,21 @@ class DemoTerritoryRepository implements TerritoryRepository {
     }.values.toList();
   }
 
+  /// The real history where the hex has one; otherwise the demo's — your
+  /// demo sets always on top.
+  @override
+  Future<List<HexActivity>> hexHistory(String h3) async {
+    var real = const <HexActivity>[];
+    try {
+      real = await live.hexHistory(h3);
+    } on ApiException {
+      // A server without the route yet.
+    }
+    final demo = StubWorld.history(h3, you: await myHandle());
+    if (real.isEmpty) return demo;
+    return [...demo.where((a) => a.yours && a.atMs > real.first.atMs), ...real];
+  }
+
   @override
   Future<List<LeaderboardRow>> leaderboard() async {
     final real = await live.leaderboard();

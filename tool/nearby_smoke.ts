@@ -211,6 +211,17 @@ async function run(): Promise<void> {
     owned.length === 1 && owned[0].yours === true && owned[0].polygon?.length === 6,
     r,
   );
+  const hex = owned[0]?.h3;
+  r = await call(a, "GET", `territory/history/${hex}`);
+  const history = Array.isArray(r.body) ? r.body : [];
+  check(
+    "the hex's history lists both sets, newest first, with yours marked",
+    history.length === 2 &&
+      history.every((s: { movementId: string }) => s.movementId === "squat") &&
+      history[0].atMs >= history[1].atMs &&
+      history.filter((s: { yours: boolean }) => s.yours).length === 1,
+    r,
+  );
   r = await call(b, "GET", "territory/mine");
   check("B, out-powered there, holds nothing", Array.isArray(r.body) && r.body.length === 0, r);
 

@@ -65,6 +65,9 @@ class _GridServer implements TerritoryRepository {
 
   @override
   Future<List<HexCell>> myHexes() async => const [];
+
+  @override
+  Future<List<HexActivity>> hexHistory(String h3) async => const [];
 }
 
 class _Transport implements ApiTransport {

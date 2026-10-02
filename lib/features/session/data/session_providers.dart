@@ -153,6 +153,7 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     ref
       ..invalidate(duelsProvider)
       ..invalidate(hexDetailProvider)
+      ..invalidate(hexHistoryProvider)
       ..invalidate(hexesProvider)
       ..invalidate(leaderboardProvider)
       ..invalidate(profileProvider)

@@ -149,6 +149,12 @@ class LiveTerritoryRepository implements TerritoryRepository {
     final body = await transport.get('territory/mine');
     return HexCell.listFromJson(body);
   }
+
+  @override
+  Future<List<HexActivity>> hexHistory(String h3) async {
+    final body = await transport.get('territory/history/$h3');
+    return HexActivity.listFromJson(body);
+  }
 }
 
 /// `GET /challenges/daily`, `POST /challenges/daily/claim` — one deployed

@@ -756,6 +756,62 @@ class LeaderboardRow {
   }
 }
 
+/// One set trained in a hex — `GET /territory/history/<h3>`. Newest first on
+/// the wire. [power] is the ground the set took, null when it fell below the
+/// claim floor (it still happened here).
+@immutable
+class HexActivity {
+  const HexActivity({
+    required this.handle,
+    required this.movementId,
+    required this.reps,
+    required this.atMs,
+    required this.yours,
+    this.holdSeconds,
+    this.power,
+  });
+
+  final String handle;
+  final String movementId;
+  final int reps;
+  final int? holdSeconds;
+  final double? power;
+  final int atMs;
+  final bool yours;
+
+  factory HexActivity.fromJson(Object? json) {
+    final map = _asMap(json, 'hexActivity');
+    return HexActivity(
+      handle: _asString(map['handle'], 'hexActivity.handle'),
+      movementId: _asString(map['movementId'], 'hexActivity.movementId'),
+      reps: _asInt(map['reps'], 'hexActivity.reps'),
+      holdSeconds: map['holdSeconds'] == null
+          ? null
+          : _asInt(map['holdSeconds'], 'hexActivity.holdSeconds'),
+      power: map['power'] == null
+          ? null
+          : _asDouble(map['power'], 'hexActivity.power'),
+      atMs: _asInt(map['atMs'], 'hexActivity.atMs'),
+      yours: _asBool(map['yours'], 'hexActivity.yours'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'handle': handle,
+    'movementId': movementId,
+    'reps': reps,
+    'holdSeconds': holdSeconds,
+    'power': power,
+    'atMs': atMs,
+    'yours': yours,
+  };
+
+  static List<HexActivity> listFromJson(Object? json) => _asList(
+    json,
+    'hexHistory',
+  ).map(HexActivity.fromJson).toList(growable: false);
+}
+
 // ---------------------------------------------------------------------------
 // Spots — GET/POST /spots/*
 // ---------------------------------------------------------------------------

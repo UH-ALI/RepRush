@@ -115,6 +115,12 @@ class StubSessionRepository implements SessionRepository {
     final landed = score >= StubWorld.minClaimPower
         ? StubWorld.addPower(hex, score)
         : null;
+    StubWorld.recordSet(
+      hex,
+      movementId: set.movementId,
+      reps: set.reps,
+      power: landed == null ? null : score,
+    );
     return SubmitResult(
       xp: math.max(1, score.round()),
       level: 3,
@@ -246,6 +252,13 @@ abstract final class StubWorld {
   /// Every hex of yours the demo has drawn, by id.
   static final _mine = <String, HexCell>{};
 
+  /// Each hex as the map first showed it — before any demo set changed it,
+  /// so its simulated past belongs to whoever held it then.
+  static final _firstSeen = <String, HexCell>{};
+
+  /// Your demo sets, by the hex they were trained in, newest last.
+  static final _sets = <String, List<HexActivity>>{};
+
   /// Your hexes beyond the map, by their place in [_elsewhereLayout], once
   /// resolved to real cells.
   static final _elsewhere = <int, HexCell>{};
@@ -283,6 +296,7 @@ abstract final class StubWorld {
     yoursInView = cells.where((c) => c.yours).length;
     for (final cell in cells) {
       if (cell.yours) _mine[cell.h3] = cell;
+      _firstSeen.putIfAbsent(cell.h3, () => cell);
     }
     final rivals = <String, int>{};
     for (final cell in cells) {
@@ -383,6 +397,83 @@ abstract final class StubWorld {
     _homeAt = null;
     _mine.clear();
     _elsewhere.clear();
+    _firstSeen.clear();
+    _sets.clear();
+  }
+
+  /// A demo set trained in [h3]. [power] is null when it fell below the
+  /// claim floor.
+  static void recordSet(
+    String h3, {
+    required String movementId,
+    required int reps,
+    required double? power,
+  }) {
+    (_sets[h3] ??= []).add(
+      HexActivity(
+        handle: StubProgressionRepository.handle,
+        movementId: movementId,
+        reps: reps,
+        power: power,
+        atMs: DateTime.now().millisecondsSinceEpoch,
+        yours: true,
+      ),
+    );
+  }
+
+  /// The demo history of [h3], newest first: your demo sets, then the sets
+  /// that earned the hex for whoever held it when the map first showed it —
+  /// a few good sets adding up to their power, over the last two days.
+  /// [you] names your own past sets on hexes the pattern gave you.
+  static List<HexActivity> history(String h3, {required String you}) {
+    final mine = (_sets[h3] ?? const <HexActivity>[]).reversed.toList();
+    final seen =
+        _firstSeen[h3] ??
+        _elsewhere.values.where((c) => c.h3 == h3).firstOrNull;
+    if (seen == null || (!seen.yours && seen.ownerHandle == null)) return mine;
+    final holderYours = seen.yours;
+    final holder = holderYours ? you : seen.ownerHandle!;
+    final total = seen.power > 0 ? seen.power : powerOf(h3);
+    final h = _hash('$h3/history');
+    // Each set clears the claim floor, as a real one must to count.
+    final count = math.max(1, math.min(1 + h % 3, (total / 12).floor()));
+    const exercises = ['squat', 'push_up', 'pull_up'];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final past = <HexActivity>[];
+    var hoursAgo = 2 + (h >> 4) % 6;
+    for (var i = 0; i < count; i++) {
+      final movement = exercises[(h >> (6 + i * 2)) % exercises.length];
+      final power = ((total / count) * 10).round() / 10;
+      final perRep = (movement == 'pull_up' ? 1.8 : 1.0) * .9;
+      past.add(
+        HexActivity(
+          handle: holder,
+          movementId: movement,
+          reps: math.max(1, (power / perRep).round()),
+          power: power,
+          atMs: now - hoursAgo * 3600 * 1000,
+          yours: holderYours,
+        ),
+      );
+      hoursAgo += 5 + (h >> (10 + i * 3)) % 14;
+    }
+    // Sometimes someone tried and fell short — a contested hex.
+    if (h % 2 == 0) {
+      final challenger = rivals[(h >> 12) % rivals.length];
+      if (challenger != holder) {
+        past.add(
+          HexActivity(
+            handle: challenger,
+            movementId: 'squat',
+            reps: 11 + (h >> 14) % 6,
+            power: 10 + ((h >> 14) % 6).toDouble(),
+            atMs: now - (hoursAgo + 3) * 3600 * 1000,
+            yours: false,
+          ),
+        );
+      }
+    }
+    return [...mine, ...past];
   }
 
   /// A demo session opened in [h3]. Over a server, [wasYours] and
@@ -659,6 +750,10 @@ class StubTerritoryRepository implements TerritoryRepository {
     }
     return StubWorld.myHexes;
   }
+
+  @override
+  Future<List<HexActivity>> hexHistory(String h3) async =>
+      StubWorld.history(h3, you: StubProgressionRepository.handle);
 
   @override
   Future<HexDetail> hexDetail(String h3) async {

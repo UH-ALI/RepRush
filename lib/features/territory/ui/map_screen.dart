@@ -875,6 +875,8 @@ class _HexSheet extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: RepRushTokens.spaceMd),
+            _HexActivityList(h3: cell.h3),
+            const SizedBox(height: RepRushTokens.spaceMd),
             if (isHere)
               BrandButton(
                 label: actionLabel,
@@ -1166,5 +1168,114 @@ class _TerritorySheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The hex's recent sets: who trained here, at what, and what it took.
+class _HexActivityList extends ConsumerWidget {
+  const _HexActivityList({required this.h3});
+
+  final String h3;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(hexHistoryProvider(h3));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Recent activity',
+          style: RepRushTokens.sectionTitle.copyWith(fontSize: 18),
+        ),
+        const SizedBox(height: RepRushTokens.spaceXs),
+        switch (history) {
+          AsyncData(:final value) when value.isEmpty => Text(
+            'No sets here yet. Be the first to train here.',
+            style: RepRushTokens.bodyLabel,
+          ),
+          AsyncData(:final value) => ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 200),
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [for (final set in value) _ActivityRow(set: set)],
+            ),
+          ),
+          AsyncError() => Text(
+            "Couldn't load this hex's history.",
+            style: RepRushTokens.bodyLabel,
+          ),
+          _ => const Padding(
+            padding: EdgeInsets.all(RepRushTokens.spaceSm),
+            child: Center(
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+        },
+      ],
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.set});
+
+  final HexActivity set;
+
+  @override
+  Widget build(BuildContext context) {
+    final what = set.holdSeconds != null
+        ? '${set.holdSeconds} s ${movementDisplayName(set.movementId).toLowerCase()}'
+        : '${set.reps} ${movementDisplayName(set.movementId).toLowerCase()}'
+              '${set.reps == 1 ? '' : 's'}';
+    final colour = set.yours ? Ownership.yours.color : Colors.white70;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(Icons.fitness_center, size: 16, color: colour),
+          const SizedBox(width: RepRushTokens.spaceSm),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: set.yours ? 'You' : set.handle,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: set.yours ? colour : null,
+                    ),
+                  ),
+                  TextSpan(text: ' · $what'),
+                ],
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: RepRushTokens.spaceSm),
+          Text(
+            [
+              if (set.power != null) '+${set.power!.round()}',
+              _ago(set.atMs),
+            ].join(' · '),
+            style: RepRushTokens.bodyLabel.copyWith(fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// "just now", "12 min ago", "5 h ago", "2 d ago" — coarse on purpose.
+  static String _ago(int atMs) {
+    final age = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(atMs),
+    );
+    if (age.inMinutes < 1) return 'just now';
+    if (age.inHours < 1) return '${age.inMinutes} min ago';
+    if (age.inDays < 1) return '${age.inHours} h ago';
+    return '${age.inDays} d ago';
   }
 }

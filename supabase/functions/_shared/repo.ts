@@ -637,6 +637,58 @@ export async function recentFlips(
   }));
 }
 
+export interface HexSetView {
+  userId: string;
+  handle: string;
+  movementId: string;
+  measurementType: string;
+  reps: number;
+  holdMs: number;
+  /** The territory the set's session added here; null below the claim floor. */
+  power: number | null;
+  atMs: number;
+}
+
+/**
+ * The latest scored sets trained in [h3] on [board], newest first, through the
+ * `hex_set_history` view (0010) — one indexed read plus the handles.
+ */
+export async function hexHistory(
+  client: Db,
+  h3: string,
+  board: Board,
+  limit = 20,
+): Promise<HexSetView[]> {
+  const { data, error } = await client
+    .from("hex_set_history")
+    .select("user_id, movement_id, measurement_type, rep_count, hold_ms, power, submitted_at_ms")
+    .eq("h3", h3)
+    .eq("board", board)
+    .order("submitted_at_ms", { ascending: false })
+    .limit(limit);
+  if (error) failDb("reading hex history", error);
+  const rows = (data ?? []) as {
+    user_id: string;
+    movement_id: string;
+    measurement_type: string;
+    rep_count: number | string;
+    hold_ms: number | string;
+    power: number | string | null;
+    submitted_at_ms: number | string;
+  }[];
+  const handles = await loadHandles(client, [...new Set(rows.map((r) => r.user_id))]);
+  return rows.map((r) => ({
+    userId: r.user_id,
+    handle: handles.get(r.user_id) ?? "athlete",
+    movementId: r.movement_id,
+    measurementType: r.measurement_type,
+    reps: num(r.rep_count, "rep_count"),
+    holdMs: num(r.hold_ms, "hold_ms"),
+    power: r.power === null ? null : num(r.power, "power"),
+    atMs: num(r.submitted_at_ms, "submitted_at_ms"),
+  }));
+}
+
 export interface LeaderboardEntry {
   handle: string;
   hexesHeld: number;

@@ -11,6 +11,7 @@
 ///     GET territory/hex/<h3>                              (D6 detail + flips)
 ///     GET territory/leaderboard                           (D7 board)
 ///     GET territory/mine                                  (your hexes, anywhere)
+///     GET territory/history/<h3>                          (sets trained there)
 /// — share this function and are dispatched on the path tail. B-10's server-side
 /// polygon computation lives here too. Deviation recorded so the register and the
 /// tree can be reconciled later.
@@ -34,6 +35,7 @@ import { isLive } from "../_shared/env.ts";
 import { cellsCoveringBBox, hexBoundary } from "../_shared/h3.ts";
 import { error, ErrorCode, HttpError, json, preflight, respond } from "../_shared/responses.ts";
 import {
+  hexHistory,
   leaderboardRows,
   loadHandles,
   loadLiveContributions,
@@ -191,6 +193,33 @@ async function handleMine(user: Authed): Promise<HexCellOut[]> {
   return mine;
 }
 
+interface HexSetOut {
+  handle: string;
+  movementId: string;
+  reps: number;
+  holdSeconds: number | null;
+  power: number | null;
+  atMs: number;
+  yours: boolean;
+}
+
+/**
+ * GET territory/history/<h3> — the latest sets trained in a hex: who, what,
+ * how many, what ground it took, when. Read only when a hex sheet opens.
+ */
+async function handleHistory(user: Authed, h3: string): Promise<HexSetOut[]> {
+  const rows = await hexHistory(db(), h3, boardFor(user.isDemo));
+  return rows.map((r) => ({
+    handle: r.handle,
+    movementId: r.movementId,
+    reps: r.reps,
+    holdSeconds: r.measurementType === "holdTime" ? Math.round(r.holdMs / 1000) : null,
+    power: r.power,
+    atMs: r.atMs,
+    yours: r.userId === user.userId,
+  }));
+}
+
 interface HexDetailOut {
   h3: string;
   ownerHandle: string | null;
@@ -295,6 +324,7 @@ Deno.serve((req: Request): Response | Promise<Response> => {
       if (head === "hex" && arg !== undefined) return json(stubHexDetail(arg));
       if (head === "leaderboard") return json(stubLeaderboard());
       if (head === "mine") return json([]);
+      if (head === "history") return json([]);
       return error(
         ErrorCode.MALFORMED_REQUEST,
         `Unknown territory route: /${route.join("/")}.`,
@@ -306,6 +336,7 @@ Deno.serve((req: Request): Response | Promise<Response> => {
     if (head === "hex" && arg !== undefined) return json(await handleHexDetail(user, arg));
     if (head === "leaderboard") return json(await handleLeaderboard(user));
     if (head === "mine") return json(await handleMine(user));
+    if (head === "history" && arg !== undefined) return json(await handleHistory(user, arg));
 
     return error(ErrorCode.MALFORMED_REQUEST, `Unknown territory route: /${route.join("/")}.`, 404);
   });

@@ -47,6 +47,9 @@ class _LiveTerritory implements TerritoryRepository {
   );
 
   @override
+  Future<List<HexActivity>> hexHistory(String h3) async => const [];
+
+  @override
   Future<List<HexCell>> myHexes() async => [
     _cell('mine_hex', owner: 'Me', yours: true),
   ];
