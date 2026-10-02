@@ -206,8 +206,9 @@ abstract final class StubWorld {
     'dip_machine',
   ];
 
-  /// Hexes the demo board credits each rival with — more than any one map
-  /// shows, as on a real board.
+  /// Hexes each rival holds ELSEWHERE, beyond your map — added to what the
+  /// map shows them holding for the global board, so a global count is never
+  /// below a nearby one.
   static const rivalHexes = {
     'iron_meridian': 9,
     'rival_kat': 7,
@@ -220,7 +221,7 @@ abstract final class StubWorld {
     'slow_burn': 1,
   };
 
-  /// Hexes the demo board credits you with before any demo capture.
+  /// Hexes you hold elsewhere, beyond your map.
   static const yourSeedHexes = 5;
 
   /// The least power one set must earn to count for territory at all, and
@@ -246,9 +247,34 @@ abstract final class StubWorld {
   static bool? _startWasYours;
   static double? _startHolderPower;
 
-  /// How many hexes the map currently shows as yours — what the demo board
-  /// credits you with, so the board and the map's OWNED count agree.
+  /// How many hexes the map currently shows as yours, and as each rival's —
+  /// the "here" part of the demo's global board. Null until a map loads.
   static int? yoursInView;
+  static Map<String, int> rivalsInView = const {};
+
+  /// Remembers who holds what on the map just drawn.
+  static void recordView(List<HexCell> cells) {
+    yoursInView = cells.where((c) => c.yours).length;
+    final rivals = <String, int>{};
+    for (final cell in cells) {
+      final owner = cell.ownerHandle;
+      if (cell.yours || owner == null) continue;
+      rivals[owner] = (rivals[owner] ?? 0) + 1;
+    }
+    rivalsInView = rivals;
+  }
+
+  /// The demo's global board: everyone's hexes on your map plus what they
+  /// hold elsewhere, with [you] under your own name.
+  static Map<String, int> globalCounts(String you) {
+    final counts = <String, int>{...rivalsInView};
+    rivalHexes.forEach((handle, elsewhere) {
+      counts[handle] = (counts[handle] ?? 0) + elsewhere;
+    });
+    final here = yoursInView;
+    counts[you] = yourSeedHexes + (here ?? newlyHeld);
+    return counts;
+  }
 
   /// Back to a fresh demo world.
   static void reset() {
@@ -259,6 +285,7 @@ abstract final class StubWorld {
     _startWasYours = null;
     _startHolderPower = null;
     yoursInView = null;
+    rivalsInView = const {};
   }
 
   /// A demo session opened in [h3]. Over a server, [wasYours] and
@@ -471,7 +498,7 @@ abstract final class StubWorld {
         );
       }
     }
-    yoursInView = cells.where((c) => c.yours).length;
+    recordView(cells);
     return cells;
   }
 
@@ -540,28 +567,12 @@ class StubTerritoryRepository implements TerritoryRepository {
 
   @override
   Future<List<LeaderboardRow>> leaderboard() async {
-    // Stub: a seeded 10-row board with you climbing it as you capture.
-    final rows = [
-      for (final MapEntry(key: handle, value: hexes)
-          in StubWorld.rivalHexes.entries)
-        (handle: handle, hexes: hexes),
-      (
-        handle: StubProgressionRepository.handle,
-        hexes:
-            StubWorld.yoursInView ??
-            StubWorld.yourSeedHexes + StubWorld.newlyHeld,
-      ),
-    ]..sort((a, b) => b.hexes.compareTo(a.hexes));
-    return [
-      for (var i = 0; i < rows.length; i++)
-        LeaderboardRow(
-          rank: i + 1,
-          handle: rows[i].handle,
-          hexesHeld: rows[i].hexes,
-          // Res-8 cells average ~0.74 km².
-          areaKm2: (rows[i].hexes * 0.737 * 10).roundToDouble() / 10,
-        ),
-    ];
+    // Stub: the seeded rivals and you — what the map shows plus what each
+    // holds elsewhere, so it is never smaller than the nearby board.
+    return LeaderboardRow.rankCounts(
+      StubWorld.globalCounts(StubProgressionRepository.handle),
+      you: StubProgressionRepository.handle,
+    );
   }
 }
 

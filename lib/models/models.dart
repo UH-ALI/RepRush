@@ -724,6 +724,36 @@ class LeaderboardRow {
     json,
     'leaderboard',
   ).map(LeaderboardRow.fromJson).toList(growable: false);
+
+  /// Average area of a res-8 hex, km² — the figure the server's board uses.
+  static const hexAreaKm2 = 0.737;
+
+  /// Ranks hexes-held [counts], most first, dropping anyone at zero. On a
+  /// tie, [you] ranks first — you are the one who just took ground.
+  static List<LeaderboardRow> rankCounts(
+    Map<String, int> counts, {
+    String? you,
+  }) {
+    final ranked = counts.entries.where((e) => e.value > 0).toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        if (byCount != 0) return byCount;
+        return a.key == you
+            ? -1
+            : b.key == you
+            ? 1
+            : 0;
+      });
+    return [
+      for (var i = 0; i < ranked.length; i++)
+        LeaderboardRow(
+          rank: i + 1,
+          handle: ranked[i].key,
+          hexesHeld: ranked[i].value,
+          areaKm2: ranked[i].value * hexAreaKm2,
+        ),
+    ];
+  }
 }
 
 // ---------------------------------------------------------------------------

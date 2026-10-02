@@ -1,5 +1,6 @@
 /// Compete tab — where you stand, today's challenge, and the territory
-/// leaderboard (G1, G3, D7). Missions may award capped XP only; the board
+/// leaderboards (G1, G3, D7): Nearby (who holds the hexes on your map) and
+/// Global (everyone, everywhere). Missions may award capped XP only; the board
 /// ranks hexes held, which only verified sets can earn.
 ///
 /// Ownership: C (ui).
@@ -18,13 +19,31 @@ import 'package:reprush/shared/errors.dart';
 import 'package:reprush/shared/states/states.dart';
 import 'package:reprush/shared/widgets/widgets.dart';
 
+/// Which territory board the Compete tab shows.
+enum BoardScope { nearby, global }
+
+class BoardScopeController extends Notifier<BoardScope> {
+  @override
+  BoardScope build() => BoardScope.nearby;
+
+  void select(BoardScope scope) => state = scope;
+}
+
+final boardScopeProvider = NotifierProvider<BoardScopeController, BoardScope>(
+  BoardScopeController.new,
+);
+
 class ChallengesScreen extends ConsumerWidget {
   const ChallengesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final challenge = ref.watch(dailyChallengeProvider);
-    final board = ref.watch(leaderboardProvider);
+    final scope = ref.watch(boardScopeProvider);
+    final boardProvider = scope == BoardScope.nearby
+        ? nearbyLeaderboardProvider
+        : leaderboardProvider;
+    final board = ref.watch(boardProvider);
     final me = ref.watch(profileProvider).value?.handle;
     return Scaffold(
       appBar: AppBar(title: const Text('Compete')),
@@ -33,8 +52,9 @@ class ChallengesScreen extends ConsumerWidget {
           ref
             ..invalidate(dailyChallengeProvider)
             ..invalidate(duelsProvider)
+            ..invalidate(hexesProvider)
             ..invalidate(leaderboardProvider);
-          await ref.read(leaderboardProvider.future);
+          await ref.read(boardProvider.future);
         },
         child: ListView(
           padding: const EdgeInsets.all(RepRushTokens.spaceMd),
@@ -59,17 +79,47 @@ class ChallengesScreen extends ConsumerWidget {
             const SizedBox(height: RepRushTokens.spaceLg),
             Text('Territory leaderboard', style: RepRushTokens.sectionTitle),
             const SizedBox(height: RepRushTokens.spaceSm),
+            SegmentedButton<BoardScope>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: BoardScope.nearby,
+                  icon: Icon(Icons.near_me_outlined),
+                  label: Text('Nearby'),
+                ),
+                ButtonSegment(
+                  value: BoardScope.global,
+                  icon: Icon(Icons.public),
+                  label: Text('Global'),
+                ),
+              ],
+              selected: {scope},
+              onSelectionChanged: (selected) =>
+                  ref.read(boardScopeProvider.notifier).select(selected.single),
+            ),
+            const SizedBox(height: RepRushTokens.spaceXs),
+            Text(
+              scope == BoardScope.nearby
+                  ? 'Who holds the hexes on your map right now.'
+                  : 'Every hex, everywhere.',
+              style: RepRushTokens.bodyLabel,
+            ),
+            const SizedBox(height: RepRushTokens.spaceSm),
             board.when(
+              skipLoadingOnReload: true,
               loading: () => const LoadingView(),
               error: (error, _) => ErrorView(
                 error: error,
-                onRetry: () => ref.invalidate(leaderboardProvider),
+                onRetry: () => ref.invalidate(boardProvider),
               ),
               data: (rows) => rows.isEmpty
-                  ? const GlassCard(
+                  ? GlassCard(
                       child: Text(
-                        'Nobody holds territory yet. Claim the first hex and '
-                        'top the board.',
+                        scope == BoardScope.nearby
+                            ? 'Nobody holds a hex around you yet. Claim the '
+                                  'first one and own the neighbourhood.'
+                            : 'Nobody holds territory yet. Claim the first '
+                                  'hex and top the board.',
                       ),
                     )
                   : GlassCard(

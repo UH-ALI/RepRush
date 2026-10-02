@@ -48,7 +48,7 @@ class DemoTerritoryRepository implements TerritoryRepository {
     final home = hexContaining(cells, (swLat + neLat) / 2, (swLng + neLng) / 2);
     if (home != null) StubWorld.claimHome(home.h3);
     final dressed = [for (final cell in cells) _dress(cell)];
-    StubWorld.yoursInView = dressed.where((c) => c.yours).length;
+    StubWorld.recordView(dressed);
     return dressed;
   }
 
@@ -129,35 +129,12 @@ class DemoTerritoryRepository implements TerritoryRepository {
   Future<List<LeaderboardRow>> leaderboard() async {
     final real = await live.leaderboard();
     final handle = await myHandle();
-    final counts = <String, int>{...StubWorld.rivalHexes};
+    final counts = StubWorld.globalCounts(handle);
+    // A real holder's real count already includes their hexes on your map.
     for (final row in real) {
-      counts[row.handle] = (counts[row.handle] ?? 0) + row.hexesHeld;
+      if (row.handle == handle) continue;
+      counts[row.handle] = math.max(counts[row.handle] ?? 0, row.hexesHeld);
     }
-    // You hold what your map shows you holding, so the board and the map's
-    // OWNED count agree.
-    counts[handle] =
-        StubWorld.yoursInView ??
-        (counts[handle] ?? 0) + StubWorld.yourSeedHexes + StubWorld.newlyHeld;
-    // On a tie you rank first: you are the one who just took ground.
-    final ranked = counts.entries.toList()
-      ..sort((a, b) {
-        final byCount = b.value.compareTo(a.value);
-        if (byCount != 0) return byCount;
-        return a.key == handle
-            ? -1
-            : b.key == handle
-            ? 1
-            : 0;
-      });
-    return [
-      for (var i = 0; i < ranked.length; i++)
-        LeaderboardRow(
-          rank: i + 1,
-          handle: ranked[i].key,
-          hexesHeld: ranked[i].value,
-          // Res-8 cells average ~0.74 km², the figure the server uses.
-          areaKm2: ranked[i].value * 0.737,
-        ),
-    ];
+    return LeaderboardRow.rankCounts(counts, you: handle);
   }
 }

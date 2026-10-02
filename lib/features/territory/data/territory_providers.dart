@@ -14,6 +14,7 @@ import 'package:reprush/core/api/api_providers.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart' show DemoVenue;
 import 'package:reprush/core/location/geo.dart';
 import 'package:reprush/core/location/location.dart';
+import 'package:reprush/features/progression/data/progression_providers.dart';
 import 'package:reprush/models/models.dart';
 
 const _viewportRadiusDegrees = 0.02;
@@ -124,7 +125,31 @@ final hexDetailProvider = FutureProvider.family<HexDetail, String>((ref, h3) {
   return ref.watch(territoryRepositoryProvider).hexDetail(h3);
 });
 
-/// `GET /territory/leaderboard` — hexes held, total area.
+/// Who holds the hexes on your map — the nearby board. Counted on the phone
+/// from the same cells the map draws, so it always agrees with what you see,
+/// in Live and Demo alike.
+final nearbyLeaderboardProvider = FutureProvider<List<LeaderboardRow>>((
+  ref,
+) async {
+  final cells = await ref.watch(hexesProvider.future);
+  // Your row carries your name, as on the global board; "You" only if the
+  // profile cannot be read at all.
+  String you;
+  try {
+    you = (await ref.watch(profileProvider.future)).handle;
+  } catch (_) {
+    you = 'You';
+  }
+  final counts = <String, int>{};
+  for (final cell in cells) {
+    final holder = cell.yours ? you : cell.ownerHandle;
+    if (holder == null) continue;
+    counts[holder] = (counts[holder] ?? 0) + 1;
+  }
+  return LeaderboardRow.rankCounts(counts, you: you);
+});
+
+/// `GET /territory/leaderboard` — the global board: hexes held, total area.
 ///
 /// Demo credits you with the hexes your map shows as yours, so it waits for
 /// the map first — otherwise the board and the OWNED count could disagree.

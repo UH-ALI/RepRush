@@ -2,10 +2,14 @@
 /// without touching the server, and a demo set is scored on the phone.
 library;
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reprush/core/api/api_providers.dart';
+import 'package:reprush/core/api/backend_config.dart';
 import 'package:reprush/core/api/demo/demo_repositories.dart';
 import 'package:reprush/core/api/repositories.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart';
+import 'package:reprush/features/territory/data/territory_providers.dart';
 import 'package:reprush/models/models.dart';
 
 HexCell _cell(String h3, {String? owner, bool yours = false}) => HexCell(
@@ -86,12 +90,17 @@ void main() {
     );
   });
 
-  test('the board is busy, and you hold what your map shows', () async {
+  test('the global board is busy: your map plus everyone elsewhere', () async {
     final yoursOnMap = (await map()).where((c) => c.yours).length;
     final board = await demo.leaderboard();
     final handles = board.map((r) => r.handle).toList();
     expect(handles, containsAll(['iron_meridian', 'rival_kat', 'Blue Man']));
-    expect(board.firstWhere((r) => r.handle == 'Me').hexesHeld, yoursOnMap);
+    expect(
+      board.firstWhere((r) => r.handle == 'Me').hexesHeld,
+      StubWorld.yourSeedHexes + yoursOnMap,
+    );
+    // A real holder keeps their real count.
+    expect(board.firstWhere((r) => r.handle == 'Blue Man').hexesHeld, 1);
     expect(
       [for (final r in board) r.rank],
       [for (var i = 1; i <= board.length; i++) i],
@@ -112,10 +121,10 @@ void main() {
     final taken = cells.firstWhere((c) => c.h3 == 'rival_hex');
     expect(taken.yours, isTrue);
     expect(taken.ownerColor, 'mine');
-    // The board follows the map.
+    // The global board follows the map.
     expect(
       (await demo.leaderboard()).firstWhere((r) => r.handle == 'Me').hexesHeld,
-      cells.where((c) => c.yours).length,
+      StubWorld.yourSeedHexes + cells.where((c) => c.yours).length,
     );
   });
 
@@ -184,5 +193,30 @@ void main() {
     expect(held.owner, isNotNull);
     // One honest set of ~15 squats (13.5 power) passes it.
     expect(StubWorld.powerOf('home_hex'), lessThan(13.5));
+  });
+
+  test('nearby board counts the map; global is never smaller', () async {
+    final container = ProviderContainer(
+      overrides: [
+        backendConfigProvider.overrideWithValue(
+          BackendConfig.parse(api: 'stub'),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final cells = await container.read(hexesProvider.future);
+    final nearby = await container.read(nearbyLeaderboardProvider.future);
+    final global = await container.read(leaderboardProvider.future);
+
+    // Nearby is exactly who holds what on the map.
+    expect(
+      nearby.fold<int>(0, (sum, r) => sum + r.hexesHeld),
+      cells.where((c) => c.yours || c.ownerHandle != null).length,
+    );
+    for (final row in nearby) {
+      final everywhere = global.firstWhere((g) => g.handle == row.handle);
+      expect(everywhere.hexesHeld, greaterThanOrEqualTo(row.hexesHeld));
+    }
   });
 }
