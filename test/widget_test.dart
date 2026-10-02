@@ -288,7 +288,9 @@ void main() {
       await tester.pumpWidget(const ProviderScope(child: RepRushApp()));
       await settle(tester);
 
-      final owned = tester.renderObject<RenderParagraph>(find.text('1 OWNED'));
+      final owned = tester.renderObject<RenderParagraph>(
+        find.textContaining(' OWNED'),
+      );
       expect(owned.didExceedMaxLines, isFalse, reason: 'shown as "1 OW…"');
 
       // The status pill's right edge lines up with the zoom controls below

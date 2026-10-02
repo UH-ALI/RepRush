@@ -53,8 +53,13 @@ class AppModeCard extends ConsumerWidget {
           Text(
             mode == ApiMode.live
                 ? 'Real territory, and real players training near you.'
-                : 'A practice world at the demo venue, with scripted rivals. '
-                      "Nothing here touches anyone's real territory.",
+                : canGoLive
+                ? 'The real map and leaderboard. Your sets, the players nearby '
+                      'and your duels are simulated, and hexes you capture '
+                      'show only on this phone. Your real score is never '
+                      'touched.'
+                : 'A practice world around you, with scripted rivals to '
+                      'duel. Nothing here touches real territory.',
             style: RepRushTokens.bodyLabel,
           ),
           if (!canGoLive) ...[

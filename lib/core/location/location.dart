@@ -13,6 +13,8 @@
 ///     friendlier copy of it.
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:geolocator/geolocator.dart';
 import 'package:reprush/models/models.dart';
 
@@ -52,7 +54,9 @@ Future<void> ensureLocationAccess() async {
 ///
 /// [requireAccuracy] (session start) throws when the fix is worse than
 /// [maxSessionAccuracyM]; the map passes `false` and takes whatever it gets.
-Future<SessionLocation> readDeviceLocation({bool requireAccuracy = true}) async {
+Future<SessionLocation> readDeviceLocation({
+  bool requireAccuracy = true,
+}) async {
   await ensureLocationAccess();
   final position = await Geolocator.getCurrentPosition(
     locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
@@ -67,6 +71,36 @@ Future<SessionLocation> readDeviceLocation({bool requireAccuracy = true}) async 
   }
   return location;
 }
+
+/// Best effort, never throws: a fresh fix of any accuracy, else the phone's last
+/// known one, else null. For the demo world, which should be played where you
+/// stand when the phone allows it and must never refuse to open when it won't.
+Future<SessionLocation?> tryReadDeviceLocation({
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  if (!deviceLocationAvailable) return null;
+  try {
+    return await readDeviceLocation(requireAccuracy: false).timeout(timeout);
+  } catch (_) {
+    // Fall through to the last known fix.
+  }
+  try {
+    final last = await Geolocator.getLastKnownPosition().timeout(
+      const Duration(seconds: 2),
+    );
+    if (last != null) return _fromPosition(last);
+  } catch (_) {
+    // No location at all — the caller has a fallback.
+  }
+  return null;
+}
+
+/// False under `flutter test`, where there is no GPS and a plugin call is
+/// never answered — the demo's best-effort lookups skip straight to their
+/// fallback instead of waiting on it.
+final bool deviceLocationAvailable = !Platform.environment.containsKey(
+  'FLUTTER_TEST',
+);
 
 /// A continuous feed of fixes: the current one first, then every move of at
 /// least a few metres.

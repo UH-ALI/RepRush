@@ -3,8 +3,8 @@
 /// ONE LOCATION, EVERYWHERE. The map's marker, the current-hex highlight, the
 /// hex sheet's "Train here" gate and session start all read position from the
 /// providers below, so the UI can never show you standing in one hex while a
-/// session starts from another. Stub mode pins all of them to the demo venue;
-/// live mode follows the device.
+/// session starts from another. Both modes follow the device; the demo falls
+/// back to the demo venue when the phone has no fix to give.
 ///
 /// Ownership: B (data).
 library;
@@ -43,19 +43,41 @@ const demoVenueLocation = SessionLocation(
   accuracyM: 0,
 );
 
+/// Where the demo world is played: your fix when the phone gives one, the
+/// demo venue when it won't (location off, permission refused, no plugin in
+/// tests). Never throws — the demo must always open.
+Future<SessionLocation> demoLocation() async =>
+    await tryReadDeviceLocation() ?? demoVenueLocation;
+
+/// The demo's position feed: the device's while it works, the venue if it
+/// never starts.
+Stream<SessionLocation> _demoLocationFeed() async* {
+  if (!deviceLocationAvailable) {
+    yield demoVenueLocation;
+    return;
+  }
+  var any = false;
+  try {
+    await for (final fix in watchDeviceLocation()) {
+      any = true;
+      yield fix;
+    }
+  } catch (_) {
+    if (!any) yield demoVenueLocation;
+  }
+}
+
 /// The anchor the hex grid is fetched around: one fix, refreshed only when the
 /// map invalidates it after a long move (see [reanchorDistanceM]). A weak fix
 /// is accepted — an approximate map beats no map.
 final territoryLocationProvider = FutureProvider<SessionLocation>((ref) {
-  if (!ref.watch(isLiveProvider)) return Future.value(demoVenueLocation);
+  if (!ref.watch(isLiveProvider)) return demoLocation();
   return readDeviceLocation(requireAccuracy: false);
 });
 
 /// The live position feed behind the "you are here" marker.
 final currentLocationProvider = StreamProvider<SessionLocation>((ref) {
-  if (!ref.watch(isLiveProvider)) {
-    return Stream.value(demoVenueLocation);
-  }
+  if (!ref.watch(isLiveProvider)) return _demoLocationFeed();
   return watchDeviceLocation();
 });
 

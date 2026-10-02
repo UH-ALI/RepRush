@@ -51,18 +51,17 @@ class StubSessionRepository implements SessionRepository {
             'is decided server-side from an allowlisted demo account (J7).',
       );
     }
-    if (location.accuracyM > 50) {
-      throw const ApiException(
-        code: ApiErrorCode.gpsTooInaccurate,
-        message: 'GPS accuracy above 50 m — territory credit needs a fix (D4).',
-      );
-    }
+    // No accuracy gate (D4) here, deliberately: the demo world is played on
+    // stage, usually indoors, and must never refuse a set over a weak fix.
+    // The live server keeps the gate.
     final now = DateTime.now().millisecondsSinceEpoch;
+    final hex = StubWorld.hexAt(location.lat, location.lng);
+    StubWorld.beginSession(hex);
     return SessionStart(
       sessionId: DemoVenue.sessionId,
       serverStartMs: now,
       movementConfigVersion: DemoVenue.movementConfigVersion,
-      hexH3: DemoVenue.demoHexH3,
+      hexH3: hex,
       spotId: spotId ?? DemoVenue.demoSpotId,
       expiresAtMs: now + const Duration(hours: 4).inMilliseconds,
     );
@@ -70,28 +69,89 @@ class StubSessionRepository implements SessionRepository {
 
   @override
   Future<SubmitResult> submit(Map<String, Object?> evidence) async {
-    // Stub: scores the B-24 fixture, flips the seeded hex, returns one PR and
-    // one rank change (api-contract.md §endpoints · POST /session/submit).
-    return const SubmitResult(
-      xp: 240,
+    // Stub: makes the hex the session started in yours (a capture the first
+    // time, power added after). The score is worked out from the set itself
+    // so the summary reads true to what you just did — and it never leaves
+    // the phone, so the demo cannot touch a real score. A payload with no
+    // reps (the contract fixtures) gets the B-24 fixture's numbers.
+    final hex = StubWorld.lastStartH3 ?? DemoVenue.demoHexH3;
+    final captured = StubWorld.capture(hex);
+    final set = _firstSet(evidence);
+    if (set == null) {
+      return SubmitResult(
+        xp: 240,
+        level: 3,
+        levelUps: const [],
+        hexResult: HexResult(
+          h3: hex,
+          captured: captured,
+          power: 1240,
+          yourPower: captured ? 620 : 1240,
+        ),
+        spotResult: const SpotResult(
+          spotId: DemoVenue.demoSpotId,
+          captured: true,
+          rank: 1,
+        ),
+        rankChange: const RankChange(before: 4, after: 2),
+        unlocks: const [],
+        prs: const [
+          PersonalRecord(movementId: 'squat', metric: 'max_reps', value: 20),
+        ],
+        achievements: const ['first_capture'],
+      );
+    }
+    // Roughly what the server awards a clean set: reps × difficulty × a good
+    // form factor, at ~1 XP per point.
+    final score = (set.reps * _difficulty(set.movementId) * 9).round();
+    final best = _bestReps[set.movementId] ?? 0;
+    final isPr = set.reps > best;
+    if (isPr) _bestReps[set.movementId] = set.reps;
+    return SubmitResult(
+      xp: score,
       level: 3,
-      levelUps: [],
+      levelUps: const [],
       hexResult: HexResult(
-        h3: DemoVenue.demoHexH3,
-        captured: true,
-        power: 1240,
-        yourPower: 620,
+        h3: hex,
+        captured: captured,
+        power: math.max(score.toDouble(), 1),
+        yourPower: math.max(score.toDouble(), 1),
       ),
-      spotResult: SpotResult(
-        spotId: DemoVenue.demoSpotId,
-        captured: true,
-        rank: 1,
-      ),
-      rankChange: RankChange(before: 4, after: 2),
-      unlocks: [],
-      prs: [PersonalRecord(movementId: 'squat', metric: 'max_reps', value: 20)],
-      achievements: ['first_capture'],
+      spotResult: null,
+      rankChange: captured ? const RankChange(before: 4, after: 3) : null,
+      unlocks: const [],
+      prs: [
+        if (isPr)
+          PersonalRecord(
+            movementId: set.movementId,
+            metric: 'max_reps',
+            value: set.reps.toDouble(),
+          ),
+      ],
+      achievements: const [],
     );
+  }
+
+  /// Your best demo set per movement, for the PR line.
+  static final _bestReps = <String, int>{};
+
+  static double _difficulty(String movementId) => switch (movementId) {
+    'pull_up' => 2.0,
+    'push_up' => 1.2,
+    _ => 1.0,
+  };
+
+  static ({String movementId, int reps})? _firstSet(
+    Map<String, Object?> evidence,
+  ) {
+    final sets = evidence['sets'];
+    if (sets is! List || sets.isEmpty) return null;
+    final set = sets.first;
+    if (set is! Map) return null;
+    final movementId = set['movementId'];
+    final reps = set['reps'];
+    if (movementId is! String || reps is! List || reps.isEmpty) return null;
+    return (movementId: movementId, reps: reps.length);
   }
 }
 
@@ -99,11 +159,218 @@ class StubSessionRepository implements SessionRepository {
 // Territory
 // ---------------------------------------------------------------------------
 
+/// The demo world's hex grid: a fixed lattice of pointy-top hexes the size of a
+/// real H3 res-8 cell, covering the whole planet, so the demo can be played
+/// wherever the phone is. Used by the OFFLINE demo (a build with no server);
+/// a demo over a server draws the real map instead (`demo_repositories.dart`).
+///
+/// FIXED, NOT VIEWPORT-RELATIVE. A cell's id and outline depend only on where it
+/// is, so the hex the map highlights, the hex a session starts in and the hex
+/// the summary flashes are always the same cell, however the map was anchored.
+/// The cell containing the demo venue keeps [DemoVenue.demoHexH3], the id the
+/// live server gives that spot.
+///
+/// A LITTLE STATE, SO THE DEMO MOVES. Ownership is a fixed pattern (about a
+/// third open, a fifth yours, the rest split between the seeded rivals), with two
+/// overrides: the hex the map first opens in is always a rival's, so the first
+/// set captures it, and every hex a set lands in becomes yours from then on.
+abstract final class StubWorld {
+  static const _metresPerDegree = 111320.0;
+
+  /// Centre-to-corner, metres — about a res-8 cell's edge.
+  static const radiusM = 461.0;
+
+  static const rivals = ['rival_kat', 'iron_meridian', 'parkside_crew'];
+
+  /// Hexes captured in the demo → whether each was already yours before.
+  static final _captured = <String, bool>{};
+  static String? _home;
+
+  /// The hex the most recent demo session started in — what its submit flips.
+  static String? lastStartH3;
+
+  /// Whether that hex was already yours when the session started, when the
+  /// real map said so; null means "ask the fixed pattern".
+  static bool? _lastStartWasYours;
+
+  /// Back to a fresh demo world.
+  static void reset() {
+    _captured.clear();
+    _home = null;
+    lastStartH3 = null;
+    _lastStartWasYours = null;
+  }
+
+  /// A demo session opened in [h3]. [wasYours] comes from the real map when
+  /// the demo is drawn over live territory.
+  static void beginSession(String h3, {bool? wasYours}) {
+    lastStartH3 = h3;
+    _lastStartWasYours = wasYours;
+  }
+
+  /// True once a demo set has landed in [h3].
+  static bool isCaptured(String h3) => _captured.containsKey(h3);
+
+  /// Hexes the demo made yours that were not yours already.
+  static int get newlyHeld => _captured.values.where((was) => !was).length;
+
+  /// Metres per degree of longitude. Fixed per whole-degree latitude band, so
+  /// the lattice tessellates exactly within a band (~111 km — any demo).
+  static double _kx(double lat) =>
+      math.cos((lat.floorToDouble() + .5) * math.pi / 180) * _metresPerDegree;
+
+  static ({int q, int r}) _cellAt(double lat, double lng) {
+    final x = lng * _kx(lat);
+    final y = lat * _metresPerDegree;
+    final qf = (math.sqrt(3) / 3 * x - y / 3) / radiusM;
+    final rf = (2 / 3 * y) / radiusM;
+    // Cube rounding: the nearest hex centre.
+    final sf = -qf - rf;
+    var q = qf.round();
+    var r = rf.round();
+    final s = sf.round();
+    final dq = (q - qf).abs();
+    final dr = (r - rf).abs();
+    final ds = (s - sf).abs();
+    if (dq > dr && dq > ds) {
+      q = -r - s;
+    } else if (dr > ds) {
+      r = -q - s;
+    }
+    return (q: q, r: r);
+  }
+
+  static ({int q, int r}) get _venue => _cellAt(DemoVenue.lat, DemoVenue.lng);
+
+  static String _idOf(int q, int r) {
+    final venue = _venue;
+    return q == venue.q && r == venue.r ? DemoVenue.demoHexH3 : 'stub_${q}_$r';
+  }
+
+  static ({int q, int r})? _parse(String id) {
+    if (id == DemoVenue.demoHexH3) return _venue;
+    final parts = id.split('_');
+    if (parts.length != 3 || parts.first != 'stub') return null;
+    final q = int.tryParse(parts[1]);
+    final r = int.tryParse(parts[2]);
+    return q == null || r == null ? null : (q: q, r: r);
+  }
+
+  /// The id of the hex containing a point.
+  static String hexAt(double lat, double lng) {
+    final cell = _cellAt(lat, lng);
+    return _idOf(cell.q, cell.r);
+  }
+
+  static GeoPoint _centre(int q, int r, double kx) => GeoPoint(
+    lat: radiusM * 1.5 * r / _metresPerDegree,
+    lng: radiusM * math.sqrt(3) * (q + r / 2) / kx,
+  );
+
+  static List<GeoPoint> _outline(int q, int r, double kx) {
+    final centre = _centre(q, r, kx);
+    return [
+      for (var i = 0; i < 6; i++)
+        GeoPoint(
+          lat:
+              centre.lat +
+              radiusM *
+                  math.sin((60 * i - 30) * math.pi / 180) /
+                  _metresPerDegree,
+          lng:
+              centre.lng +
+              radiusM * math.cos((60 * i - 30) * math.pi / 180) / kx,
+        ),
+    ];
+  }
+
+  /// Who holds a hex: you, a rival, or nobody (null).
+  static ({bool yours, String? owner}) holder(String id) {
+    if (_captured.containsKey(id)) {
+      return (yours: true, owner: StubProgressionRepository.handle);
+    }
+    // The venue hex is "the north end of the park": always contested, so a
+    // set there is always a capture.
+    if (id == _home || id == DemoVenue.demoHexH3) {
+      return (yours: false, owner: rivals.first);
+    }
+    final cell = _parse(id);
+    if (cell == null) return (yours: false, owner: null);
+    final k = ((cell.q * 73856093) ^ (cell.r * 19349663)).abs() % 9;
+    if (k < 3) return (yours: false, owner: null);
+    if (k < 5) return (yours: true, owner: StubProgressionRepository.handle);
+    return (yours: false, owner: rivals[k % rivals.length]);
+  }
+
+  static double powerOf(String id) {
+    final cell = _parse(id);
+    if (cell == null) return 0;
+    return 180.0 + ((cell.q * 53 + cell.r * 31).abs() % 900);
+  }
+
+  /// A set landed in [id]: it is yours now. Returns whether that changed hands.
+  static bool capture(String id) {
+    if (_captured.containsKey(id)) return false;
+    final wasYours = id == lastStartH3 && _lastStartWasYours != null
+        ? _lastStartWasYours!
+        : holder(id).yours;
+    _captured[id] = wasYours;
+    return !wasYours;
+  }
+
+  /// Every hex whose centre lies in the box.
+  static List<HexCell> cellsIn({
+    required double swLat,
+    required double swLng,
+    required double neLat,
+    required double neLng,
+  }) {
+    final midLat = (swLat + neLat) / 2;
+    final kx = _kx(midLat);
+    _home ??= hexAt(midLat, (swLng + neLng) / 2);
+    final rowStep = radiusM * 1.5;
+    final colStep = radiusM * math.sqrt(3);
+    final rMin = (swLat * _metresPerDegree / rowStep).floor() - 1;
+    final rMax = (neLat * _metresPerDegree / rowStep).ceil() + 1;
+    final cells = <HexCell>[];
+    for (var r = rMin; r <= rMax; r++) {
+      final qMin = (swLng * kx / colStep - r / 2).floor() - 1;
+      final qMax = (neLng * kx / colStep - r / 2).ceil() + 1;
+      for (var q = qMin; q <= qMax; q++) {
+        final centre = _centre(q, r, kx);
+        if (centre.lat < swLat ||
+            centre.lat > neLat ||
+            centre.lng < swLng ||
+            centre.lng > neLng) {
+          continue;
+        }
+        final id = _idOf(q, r);
+        final held = holder(id);
+        cells.add(
+          HexCell(
+            h3: id,
+            polygon: _outline(q, r, kx),
+            ownerHandle: held.owner,
+            ownerColor: held.yours
+                ? 'mine'
+                : held.owner == null
+                ? 'unclaimed'
+                : 'rival',
+            power: held.owner == null ? 0 : powerOf(id),
+            yours: held.yours,
+          ),
+        );
+      }
+    }
+    return cells;
+  }
+
+  /// True for an id this world could have issued.
+  static bool knows(String id) => _parse(id) != null;
+}
+
 class StubTerritoryRepository implements TerritoryRepository {
   const StubTerritoryRepository();
-
-  static const _ownerYou = 'demo_athlete';
-  static const _owners = ['rival_kat', 'iron_meridian', 'parkside_crew'];
 
   @override
   Future<List<HexCell>> hexes({
@@ -113,81 +380,46 @@ class StubTerritoryRepository implements TerritoryRepository {
     required double neLng,
   }) async {
     // H3 boundaries are computed by the live Edge Function. The Flutter stub
-    // cannot import the server-only H3 package, so it uses a tessellating
-    // pointy-hex fixture with the same wire shape and ownership semantics.
-    const rows = 10;
-    const cols = 9;
-    final cellWidth = math.max(0.001, (neLng - swLng) / cols);
-    final radiusLng = cellWidth / math.sqrt(3);
-    final radiusLat = (neLat - swLat) / (rows * 1.5);
-    final cells = <HexCell>[];
-    for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        final i = r * cols + c;
-        final centerLat =
-            swLat +
-            radiusLat +
-            r * radiusLat * 1.5 +
-            (c.isOdd ? radiusLat * .75 : 0);
-        final centerLng = swLng + radiusLng + c * cellWidth;
-        final polygon = <GeoPoint>[
-          GeoPoint(lat: centerLat + radiusLat, lng: centerLng),
-          GeoPoint(lat: centerLat + radiusLat / 2, lng: centerLng + radiusLng),
-          GeoPoint(lat: centerLat - radiusLat / 2, lng: centerLng + radiusLng),
-          GeoPoint(lat: centerLat - radiusLat, lng: centerLng),
-          GeoPoint(lat: centerLat - radiusLat / 2, lng: centerLng - radiusLng),
-          GeoPoint(lat: centerLat + radiusLat / 2, lng: centerLng - radiusLng),
-        ];
-        final yours = i == 12;
-        final owner = yours
-            ? _ownerYou
-            : (i % 3 == 0 ? null : _owners[i % _owners.length]);
-        cells.add(
-          HexCell(
-            h3: yours
-                ? DemoVenue.demoHexH3
-                : '88195da49bf${(i + 1).toRadixString(16).padLeft(4, '0')}',
-            polygon: polygon,
-            ownerHandle: owner,
-            ownerColor: yours
-                ? 'mine'
-                : owner == null
-                ? 'unclaimed'
-                : 'rival',
-            power: 180.0 + ((i * 53) % 900),
-            yours: yours,
-          ),
-        );
-      }
-    }
-    return cells;
+    // cannot import the server-only H3 package, so it draws [StubWorld]'s
+    // lattice with the same wire shape and ownership semantics.
+    return StubWorld.cellsIn(
+      swLat: swLat,
+      swLng: swLng,
+      neLat: neLat,
+      neLng: neLng,
+    );
   }
 
   @override
   Future<HexDetail> hexDetail(String h3) async {
-    // Stub: one contested hex with two flips and one spot inside.
-    if (h3 != DemoVenue.demoHexH3) {
+    if (!StubWorld.knows(h3)) {
       throw const ApiException(
         code: ApiErrorCode.unknownHex,
         message: 'Unknown hex index.',
         statusCode: 404,
       );
     }
+    final held = StubWorld.holder(h3);
+    final power = StubWorld.powerOf(h3);
+    final rival = held.yours ? StubWorld.rivals.first : held.owner;
     return HexDetail(
       h3: h3,
-      ownerHandle: _owners.first,
-      power: 1240,
-      yourPower: 620,
-      spots: StubSpotsRepository.seedSpots,
+      ownerHandle: held.owner,
+      power: power,
+      yourPower: held.yours ? power : power / 2,
+      spots: h3 == DemoVenue.demoHexH3
+          ? StubSpotsRepository.seedSpots
+          : const [],
       recentFlips: [
+        if (rival != null)
+          HexFlip(
+            handle: rival,
+            atMs: DateTime.now()
+                .subtract(const Duration(hours: 5))
+                .millisecondsSinceEpoch,
+          ),
         HexFlip(
-          handle: _owners.first,
-          atMs: DateTime.now()
-              .subtract(const Duration(hours: 5))
-              .millisecondsSinceEpoch,
-        ),
-        HexFlip(
-          handle: _ownerYou,
+          handle: StubProgressionRepository.handle,
           atMs: DateTime.now()
               .subtract(const Duration(hours: 26))
               .millisecondsSinceEpoch,
@@ -198,26 +430,30 @@ class StubTerritoryRepository implements TerritoryRepository {
 
   @override
   Future<List<LeaderboardRow>> leaderboard() async {
-    // Stub: a seeded 10-row board with the demo user climbing it.
-    const rows = [
-      (handle: 'iron_meridian', hexes: 9, area: 6.7),
-      (handle: 'rival_kat', hexes: 7, area: 5.2),
-      (handle: 'parkside_crew', hexes: 6, area: 4.5),
-      (handle: 'demo_athlete', hexes: 5, area: 3.7),
-      (handle: 'north_bar_owl', hexes: 4, area: 3.0),
-      (handle: 'plank_pilgrim', hexes: 3, area: 2.2),
-      (handle: 'dip_machine', hexes: 3, area: 2.2),
-      (handle: 'muscle_up_mo', hexes: 2, area: 1.5),
-      (handle: 'sunrise_squat', hexes: 1, area: 0.7),
-      (handle: 'slow_burn', hexes: 1, area: 0.7),
-    ];
+    // Stub: a seeded 10-row board with you climbing it as you capture.
+    final rows = [
+      (handle: 'iron_meridian', hexes: 9),
+      (handle: 'rival_kat', hexes: 7),
+      (handle: 'parkside_crew', hexes: 6),
+      (
+        handle: StubProgressionRepository.handle,
+        hexes: 5 + StubWorld.newlyHeld,
+      ),
+      (handle: 'north_bar_owl', hexes: 4),
+      (handle: 'plank_pilgrim', hexes: 3),
+      (handle: 'dip_machine', hexes: 3),
+      (handle: 'muscle_up_mo', hexes: 2),
+      (handle: 'sunrise_squat', hexes: 1),
+      (handle: 'slow_burn', hexes: 1),
+    ]..sort((a, b) => b.hexes.compareTo(a.hexes));
     return [
       for (var i = 0; i < rows.length; i++)
         LeaderboardRow(
           rank: i + 1,
           handle: rows[i].handle,
           hexesHeld: rows[i].hexes,
-          areaKm2: rows[i].area,
+          // Res-8 cells average ~0.74 km².
+          areaKm2: (rows[i].hexes * 0.737 * 10).roundToDouble() / 10,
         ),
     ];
   }
@@ -276,7 +512,27 @@ class StubSpotsRepository implements SpotsRepository {
         message: 'radiusM must be <= 2000.',
       );
     }
-    return seedSpots;
+    // The seeded spots, laid out around wherever the demo is being played:
+    // the rig a stone's throw away, the others a short walk.
+    final origin = seedSpots.first;
+    return [
+      for (final spot in seedSpots)
+        SpotSummary(
+          id: spot.id,
+          name: spot.name,
+          type: spot.type,
+          lat: lat + (spot.lat - origin.lat) + .0006,
+          lng: lng + (spot.lng - origin.lng) + .0004,
+          verified: spot.verified,
+          holderHandle: spot.holderHandle,
+          distanceM: distanceM(
+            lat,
+            lng,
+            lat + (spot.lat - origin.lat) + .0006,
+            lng + (spot.lng - origin.lng) + .0004,
+          ),
+        ),
+    ];
   }
 
   @override
@@ -551,7 +807,35 @@ abstract final class StubLedger {
 /// Three scripted athletes who are always "out training" a hex or two from
 /// wherever you are, so nearby play demos on one phone.
 class StubPresenceRepository implements PresenceRepository {
-  StubPresenceRepository();
+  StubPresenceRepository({this.cellsAround});
+
+  /// The hexes around a fix to put the scripted athletes in. Demo over live
+  /// territory passes the real grid, so they stand in real hexes; null uses
+  /// the offline demo world's.
+  final Future<List<HexCell>> Function(SessionLocation location)? cellsAround;
+
+  /// The last grid fetched, reused until you move a few hundred metres — a
+  /// heartbeat every 15 s should not refetch the map each time.
+  ({SessionLocation at, List<HexCell> cells})? _grid;
+
+  Future<List<HexCell>> _cells(SessionLocation location) async {
+    final grid = _grid;
+    if (grid != null &&
+        distanceM(grid.at.lat, grid.at.lng, location.lat, location.lng) < 300) {
+      return grid.cells;
+    }
+    final fetch = cellsAround;
+    final cells = fetch != null
+        ? await fetch(location)
+        : await const StubTerritoryRepository().hexes(
+            swLat: location.lat - .02,
+            swLng: location.lng - .02,
+            neLat: location.lat + .02,
+            neLng: location.lng + .02,
+          );
+    _grid = (at: location, cells: cells);
+    return cells;
+  }
 
   static const players = [
     (userId: 'stub-rival-kat', handle: 'rival_kat', level: 7, hexes: 7),
@@ -567,14 +851,10 @@ class StubPresenceRepository implements PresenceRepository {
   @override
   Future<List<NearbyPlayer>> heartbeat(SessionLocation location) async {
     visible = true;
-    // The same fixture grid the stub map draws around this fix, so each
-    // player sits in the centre of a visible hex.
-    final cells = await const StubTerritoryRepository().hexes(
-      swLat: location.lat - .02,
-      swLng: location.lng - .02,
-      neLat: location.lat + .02,
-      neLng: location.lng + .02,
-    );
+    // The same grid the map draws around this fix, so each player sits in
+    // the centre of a visible hex.
+    final cells = await _cells(location);
+    if (cells.length <= _cellRanks.last) return const [];
     double away(HexCell c) {
       final centre = polygonCentre(c.polygon);
       return distanceM(location.lat, location.lng, centre.lat, centre.lng);

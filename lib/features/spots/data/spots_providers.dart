@@ -11,11 +11,11 @@ import 'package:reprush/models/models.dart';
 /// `GET /spots/nearby` around the athlete — the ONE nearby-spots provider; the
 /// map and the workout screen both read it.
 ///
-/// Live: spots have no table or route yet (B-12), so this is empty rather than
-/// fabricated venue spots drawn next to real territory. Stub: the seeded venue
-/// spots around the demo location.
+/// With a server (Live, or Demo over the real map): spots have no table or
+/// route yet (B-12), so this is empty rather than fabricated spots drawn next
+/// to real territory. Offline demo: the seeded spots laid out around you.
 final nearbySpotsProvider = FutureProvider<List<SpotSummary>>((ref) async {
-  if (ref.watch(isLiveProvider)) return const <SpotSummary>[];
+  if (ref.watch(hasServerProvider)) return const <SpotSummary>[];
   final location = await ref.watch(territoryLocationProvider.future);
   return ref
       .watch(spotsRepositoryProvider)

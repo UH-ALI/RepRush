@@ -11,7 +11,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/api_providers.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart'
-    show StubDuelsRepository, StubLedger;
+    show StubDuelsRepository, StubLedger, StubWorld;
 import 'package:reprush/core/location/geo.dart';
 import 'package:reprush/core/location/location.dart';
 import 'package:reprush/features/challenges/data/challenges_providers.dart';
@@ -89,12 +89,36 @@ class ActiveSessionController extends Notifier<SessionStart?> {
     required SessionLocation location,
     String? spotId,
   }) async {
-    final started = await ref
+    var started = await ref
         .read(sessionRepositoryProvider)
         .start(location: location, spotId: spotId);
+    if (!ref.read(isLiveProvider) && ref.read(hasServerProvider)) {
+      started = await _onRealMap(started, location);
+    }
     _startLocation = location;
     state = started;
     return started;
+  }
+
+  /// A demo set over the real map belongs to the REAL hex you are standing
+  /// in, so the capture lands on the cell the map highlights. Whether it was
+  /// already yours decides "captured" versus "power added" on the summary.
+  Future<SessionStart> _onRealMap(
+    SessionStart started,
+    SessionLocation location,
+  ) async {
+    final cells = await ref.read(hexesProvider.future);
+    final cell = hexContaining(cells, location.lat, location.lng);
+    if (cell == null) return started;
+    StubWorld.beginSession(cell.h3, wasYours: cell.yours);
+    return SessionStart(
+      sessionId: started.sessionId,
+      serverStartMs: started.serverStartMs,
+      movementConfigVersion: started.movementConfigVersion,
+      hexH3: cell.h3,
+      spotId: started.spotId,
+      expiresAtMs: started.expiresAtMs,
+    );
   }
 
   /// Drops the local session without submitting. The server row simply expires
@@ -142,6 +166,6 @@ final activeSessionProvider =
 /// place the stub map is drawn around — so the hex gate is consistent there
 /// too; live mode takes a fresh device fix that must pass the 50 m gate.
 Future<SessionLocation> readSessionLocation(Ref ref) async {
-  if (!ref.read(isLiveProvider)) return demoVenueLocation;
+  if (!ref.read(isLiveProvider)) return demoLocation();
   return readDeviceLocation();
 }

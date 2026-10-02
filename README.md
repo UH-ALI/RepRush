@@ -66,7 +66,7 @@ flutter run \
   --dart-define=REPRUSH_SUPABASE_ANON_KEY=<anon-key>
 ```
 
-A build that carries a key can switch between **Live** and **Demo** in the app: **Profile → Game world**. The choice is remembered across restarts. `REPRUSH_API` only sets which one a fresh install opens in. Demo is a scripted world at the demo venue, with practice rivals to duel, and nothing in it touches real territory. The map shows a **DEMO** tag while it's on.
+A build that carries a key can switch between **Live** and **Demo** in the app: **Profile → Game world**. The choice is remembered across restarts. `REPRUSH_API` only sets which one a fresh install opens in. Demo plays where you're standing, on the real map, owners and leaderboard. Three things are simulated: your sets are scored on the phone and never submitted, nearby players and duels are scripted, and hexes you capture turn yours only on that phone. Nothing in Demo touches a real score. The map shows a **DEMO** tag while it's on. A build with no key gets a fully offline demo world, drawn around you, or around the London venue if location is off.
 
 Optional flags:
 

@@ -9,6 +9,7 @@ import 'package:reprush/app/app.dart';
 import 'package:reprush/app/onboarding.dart';
 import 'package:reprush/core/api/api_providers.dart';
 import 'package:reprush/core/api/backend_config.dart';
+import 'package:reprush/core/api/demo/demo_repositories.dart';
 import 'package:reprush/core/api/live/api_transport.dart';
 import 'package:reprush/core/api/live/live_repositories.dart';
 import 'package:reprush/core/api/stub/stub_repositories.dart';
@@ -78,9 +79,33 @@ void main() {
       final c = _container(config: _keyed);
       expect(c.read(appModeProvider), ApiMode.stub);
       expect(c.read(isLiveProvider), isFalse);
-      expect(c.read(apiTransportProvider), isNull);
+    });
+
+    test('demo with a server: real reads, simulated sets, players, duels', () {
+      final c = _container(config: _keyed);
+      // The real map, profile and board…
+      expect(c.read(apiTransportProvider), isNotNull);
+      expect(
+        c.read(territoryRepositoryProvider),
+        isA<DemoTerritoryRepository>(),
+      );
+      expect(
+        c.read(progressionRepositoryProvider),
+        isA<LiveProgressionRepository>(),
+      );
+      // …while nothing a demo does can reach the server.
+      expect(c.read(sessionRepositoryProvider), isA<StubSessionRepository>());
       expect(c.read(presenceRepositoryProvider), isA<StubPresenceRepository>());
       expect(c.read(duelsRepositoryProvider), isA<StubDuelsRepository>());
+    });
+
+    test('demo with no server is the offline world', () {
+      final c = _container(config: _keyless);
+      expect(c.read(apiTransportProvider), isNull);
+      expect(
+        c.read(territoryRepositoryProvider),
+        isA<StubTerritoryRepository>(),
+      );
     });
 
     test('a saved choice wins over the build default', () {

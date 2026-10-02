@@ -118,7 +118,8 @@ void main() {
         addTearDown(container.dispose);
 
         final cells = await container.read(hexesProvider.future);
-        expect(cells.length, greaterThanOrEqualTo(90));
+        // ~0.55 km² cells over the ±0.02° viewport.
+        expect(cells.length, greaterThanOrEqualTo(15));
         expect(cells.where((c) => c.yours), isNotEmpty);
         expect(cells.where((c) => c.ownerHandle == null), isNotEmpty);
         for (final cell in cells) {

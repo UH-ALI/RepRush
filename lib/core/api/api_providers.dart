@@ -4,11 +4,17 @@
 ///
 /// LIVE OR DEMO, CHOSEN IN THE APP. The build's `REPRUSH_API` is only the
 /// default; [appModeProvider] is what the bindings follow, and the Profile
-/// screen switches it. Demo binds every repository to its stub — a scripted
-/// world around the demo venue that needs no server and no other players.
-/// Live binds them to Supabase, which is only offered when the build carries a
-/// key ([BackendConfig.canGoLive]). Switching rebuilds every repository, and
-/// with them every screen's data.
+/// screen switches it. Switching rebuilds every repository, and with them
+/// every screen's data.
+///
+///   - Live: everything is the server.
+///   - Demo, in a build with a server key: still the real map, owners,
+///     leaderboard, profile and daily challenge — but a set is scored on the
+///     phone and never submitted, the athletes nearby and their duels are
+///     scripted, and the hexes demo sets capture are painted over the real map
+///     (`demo/demo_repositories.dart`). Nothing a demo does reaches the server.
+///   - Demo, in a build with no key: every repository is its stub, a whole
+///     offline world drawn around wherever you are.
 ///
 /// Ownership: B.
 library;
@@ -16,6 +22,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reprush/core/api/backend_config.dart';
+import 'package:reprush/core/api/demo/demo_repositories.dart';
 import 'package:reprush/core/api/live/api_transport.dart';
 import 'package:reprush/core/api/live/live_repositories.dart';
 import 'package:reprush/core/api/live/supabase_account.dart';
@@ -83,24 +90,39 @@ final isLiveProvider = Provider<bool>(
   (ref) => ref.watch(appModeProvider) == ApiMode.live,
 );
 
+/// True when the build can reach a server — in Live, and in a Demo drawn over
+/// the real game. False only in a build with no key, whose demo is offline.
+final hasServerProvider = Provider<bool>(
+  (ref) => ref.watch(backendConfigProvider).canGoLive,
+);
+
 /// One transport per process: `Supabase.initialize` may run only once, so
 /// switching demo → live → demo → live must reuse the same instance.
 final _supabaseTransportProvider = Provider<SupabaseTransport>(
   (ref) => SupabaseTransport(ref.watch(backendConfigProvider)),
 );
 
-/// Nullable, and the null IS the switch: null in demo mode, so nothing reaches
-/// for a server — not even `Supabase.initialize` — until Live is chosen.
+/// Nullable, and the null IS the switch: null only in a build with no server,
+/// so nothing reaches for one — not even `Supabase.initialize`.
 final apiTransportProvider = Provider<ApiTransport?>((ref) {
-  return ref.watch(isLiveProvider)
+  return ref.watch(hasServerProvider)
       ? ref.watch(_supabaseTransportProvider)
       : null;
 });
 
+/// The transport for routes Demo must never call — the ones that would score
+/// a set, show you to real athletes or start a real duel. Null in Demo.
+final _liveOnlyTransportProvider = Provider<ApiTransport?>((ref) {
+  return ref.watch(isLiveProvider) ? ref.watch(apiTransportProvider) : null;
+});
+
 /// Live: both its routes are deployed (`session-start`, `session-submit`) and
 /// verified end to end against the local stack.
+///
+/// Demo: the stub — a set is scored on the phone and never submitted, so it
+/// cannot touch a real score.
 final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
-  final transport = ref.watch(apiTransportProvider);
+  final transport = ref.watch(_liveOnlyTransportProvider);
   return transport == null
       ? const StubSessionRepository()
       : LiveSessionRepository(transport: transport);
@@ -138,26 +160,44 @@ final challengesRepositoryProvider = Provider<ChallengesRepository>((ref) {
 /// thing is live. Swapping this is the ONLY change C's map needs on the Day-3 cut:
 /// `HexCell`/`HexDetail` keep their shapes and `ownerColor` stays the
 /// 'mine'/'rival'/'unclaimed' token vocabulary `map_screen.dart` already renders.
+///
+/// Demo over a server: the live map with the demo's captures painted on.
 final territoryRepositoryProvider = Provider<TerritoryRepository>((ref) {
   final transport = ref.watch(apiTransportProvider);
-  return transport == null
-      ? const StubTerritoryRepository()
-      : LiveTerritoryRepository(transport: transport);
+  if (transport == null) return const StubTerritoryRepository();
+  final live = LiveTerritoryRepository(transport: transport);
+  if (ref.watch(isLiveProvider)) return live;
+  return DemoTerritoryRepository(
+    live: live,
+    myHandle: () async =>
+        (await LiveProgressionRepository(transport: transport).me()).handle,
+  );
 });
 
 /// Live: the `presence` function (heartbeat + nearby, hex-level only). Demo:
 /// three scripted athletes a hex or two from you.
+///
+/// Demo over a server: the scripted athletes, standing in real hexes.
 final presenceRepositoryProvider = Provider<PresenceRepository>((ref) {
-  final transport = ref.watch(apiTransportProvider);
-  return transport == null
-      ? StubPresenceRepository()
-      : LivePresenceRepository(transport: transport);
+  final live = ref.watch(_liveOnlyTransportProvider);
+  if (live != null) return LivePresenceRepository(transport: live);
+  final server = ref.watch(apiTransportProvider);
+  return StubPresenceRepository(
+    cellsAround: server == null
+        ? null
+        : (at) => LiveTerritoryRepository(transport: server).hexes(
+            swLat: at.lat - .01,
+            swLng: at.lng - .01,
+            neLat: at.lat + .01,
+            neLng: at.lng + .01,
+          ),
+  );
 });
 
 /// Live: the `duels` function, scored from real set records. Demo: a scripted
 /// opponent that scores your actual set from [StubLedger].
 final duelsRepositoryProvider = Provider<DuelsRepository>((ref) {
-  final transport = ref.watch(apiTransportProvider);
+  final transport = ref.watch(_liveOnlyTransportProvider);
   return transport == null
       ? StubDuelsRepository()
       : LiveDuelsRepository(transport: transport);
