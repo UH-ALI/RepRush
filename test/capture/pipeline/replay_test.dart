@@ -60,6 +60,9 @@ List<_Fixture> _loadFixtures() {
                       }(),
                   },
                   timestampMs: frame['timestampMs']! as int,
+                  // Present in real-phone recordings, absent in synthetic ones.
+                  imageWidth: (frame['imageWidth'] as num?)?.toDouble(),
+                  imageHeight: (frame['imageHeight'] as num?)?.toDouble(),
                 );
               }(),
           ],

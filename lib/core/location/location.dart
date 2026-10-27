@@ -13,6 +13,7 @@
 ///     friendlier copy of it.
 library;
 
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:geolocator/geolocator.dart';
@@ -28,8 +29,29 @@ const _streamSettings = LocationSettings(
   distanceFilter: 5,
 );
 
+/// The check currently in flight, shared by every caller.
+///
+/// On first launch the map's anchor fix and its live feed both ask for access
+/// in the same frame. Android allows ONE runtime-permission request at a time
+/// ("Can request only one set of permissions at a time"): the second request
+/// is cancelled with an empty result, which surfaced as the map spinning
+/// forever. Callers now join the same request instead of racing it.
+Future<void>? _accessCheck;
+
 /// Throws [LocationException] when location is off or permission is refused.
-Future<void> ensureLocationAccess() async {
+Future<void> ensureLocationAccess() {
+  final inFlight = _accessCheck;
+  if (inFlight != null) return inFlight;
+  final check = _checkLocationAccess();
+  _accessCheck = check;
+  // Forget the result once settled: a user who denied and then enabled
+  // location in settings must be re-checked, not served a stale failure.
+  void clear() => _accessCheck = null;
+  check.then((_) => clear(), onError: (_) => clear());
+  return check;
+}
+
+Future<void> _checkLocationAccess() async {
   if (!await Geolocator.isLocationServiceEnabled()) {
     throw const LocationException(
       'Location is turned off. Turn it on so RepRush can tell which hex '
@@ -58,9 +80,21 @@ Future<SessionLocation> readDeviceLocation({
   bool requireAccuracy = true,
 }) async {
   await ensureLocationAccess();
-  final position = await Geolocator.getCurrentPosition(
-    locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-  );
+  final Position position;
+  try {
+    position = await Geolocator.getCurrentPosition(
+      // Without a limit a cold GPS (indoors) waits forever and the map
+      // never leaves its loading state.
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 20),
+      ),
+    );
+  } on TimeoutException {
+    throw const LocationException(
+      "Couldn't get a GPS fix. Step outside or near a window and try again.",
+    );
+  }
   final location = _fromPosition(position);
   if (requireAccuracy && location.accuracyM > maxSessionAccuracyM) {
     throw LocationException(

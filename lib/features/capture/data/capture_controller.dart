@@ -18,6 +18,7 @@ import 'package:reprush/features/capture/camera/coordinates.dart';
 import 'package:reprush/features/capture/camera/input_image_adapter.dart';
 import 'package:reprush/features/capture/camera/movement_landmarks.dart';
 import 'package:reprush/features/capture/camera/pose_service.dart';
+import 'package:reprush/features/capture/data/trace_files.dart';
 import 'package:reprush/features/capture/pipeline/evidence.dart';
 import 'package:reprush/features/capture/pipeline/feedback.dart';
 import 'package:reprush/features/capture/pipeline/movement_config.dart';
@@ -174,8 +175,8 @@ class CaptureController extends Notifier<CaptureStatus> {
     _framesDropped = 0;
     _calibDiagLogged = false;
     // Debug-only fixture capture — release builds never allocate it.
-    _traceRecorder = kDebugMode ? TraceRecorder() : null;
-    _diagRecorder = kDebugMode
+    _traceRecorder = recordingEnabled ? TraceRecorder() : null;
+    _diagRecorder = recordingEnabled
         ? PipelineTraceRecorder(chain: config.chain)
         : null;
     pipelineFrames.value = null;
@@ -214,6 +215,7 @@ class CaptureController extends Notifier<CaptureStatus> {
         'export via exportDiagnosticsToLog() to pull tuning evidence.',
       );
     }
+    _saveRecordings();
     _sessionClock?.stop();
     _sessionClock = null;
     _repEvents.clear();
@@ -224,6 +226,40 @@ class CaptureController extends Notifier<CaptureStatus> {
     _traceRecorder = null;
     _diagRecorder = null;
     pipelineFrames.value = null;
+  }
+
+  /// Saves the landmark trace and the diagnostics of this session to files
+  /// on the phone when built with `REPRUSH_RECORD=true` (see
+  /// `trace_files.dart`). Numbers only, local only, never part of Evidence.
+  /// What the app itself counted and the mean fps go into the file so the
+  /// recording can be compared with the athlete's own tally.
+  void _saveRecordings() {
+    if (!kRecordTraces) return;
+    final config = _pipeline?.config;
+    final recorder = _traceRecorder;
+    if (config == null || recorder == null || recorder.frameCount == 0) return;
+    final elapsedMs = _sessionClock?.elapsedMilliseconds ?? 0;
+    final meta = <String, Object?>{
+      'appCountedReps': _pipeline?.repCount ?? 0,
+      'durationMs': elapsedMs,
+      'fpsMean': elapsedMs > 0 ? _framesTotal * 1000 / elapsedMs : null,
+      'build': kReleaseMode ? 'release' : (kProfileMode ? 'profile' : 'debug'),
+      'recordedAt': DateTime.now().toIso8601String(),
+    };
+    final tracePath = writeTraceFile(
+      kind: 'trace',
+      movement: config.id,
+      json: recorder.exportJson(movement: config.id, meta: meta),
+    );
+    final diag = _diagRecorder;
+    if (diag != null && diag.entryCount > 0) {
+      writeTraceFile(
+        kind: 'diag',
+        movement: config.id,
+        json: diag.exportJson(movement: config.id, meta: meta),
+      );
+    }
+    if (tracePath != null) debugPrint('RepRush trace saved: $tracePath');
   }
 
   /// Fixture JSON for the current debug session (null outside debug or
@@ -253,7 +289,14 @@ class CaptureController extends Notifier<CaptureStatus> {
   /// Opens the selected camera and starts the frame → inference pump.
   /// Idempotent while streaming or already starting.
   Future<void> start() async {
-    if (state.phase == CapturePhase.streaming || _starting) return;
+    // A teardown still in flight (the previous exercise closing) must finish
+    // first, or it would close the camera this call is about to open.
+    await _stopping;
+    // `_streaming` is the truth about the camera; `state.phase` is only its
+    // reflection and was left at `streaming` by an earlier [stop], which made
+    // the next exercise's screen skip opening the camera (black preview until
+    // the app was restarted).
+    if (_streaming || _starting) return;
     _starting = true;
     try {
       // Portrait-locked capture: the rotation formula still runs against
@@ -346,11 +389,25 @@ class CaptureController extends Notifier<CaptureStatus> {
   }
 
   /// Full teardown — camera, detector, counters, orientation lock.
-  Future<void> stop() async {
+  Future<void> stop() {
+    // The counting session ends NOW, synchronously. The camera teardown below
+    // takes time; if a new exercise screen starts its own session meanwhile
+    // (a quick switch), this call must not wipe that one afterwards.
+    stopSession();
+    final run = _teardown();
+    _stopping = run;
+    return run.whenComplete(() {
+      if (identical(_stopping, run)) _stopping = null;
+    });
+  }
+
+  /// The teardown in flight, so [start] can wait for it instead of racing it.
+  Future<void>? _stopping;
+
+  Future<void> _teardown() async {
     await _releaseCamera();
     await _pose?.close();
     _pose = null;
-    stopSession();
     _fpsWindow?.stop();
     _fpsWindow = null;
     _missStreak = 0;
@@ -358,6 +415,12 @@ class CaptureController extends Notifier<CaptureStatus> {
     _currentFps = 0;
     frames.value = null;
     await SystemChrome.setPreferredOrientations([]);
+    // The camera is closed now: say so, so the next capture screen (another
+    // exercise, mounted while this notifier lives on) reopens it. Skipped if
+    // the container itself is already gone (app shutting down).
+    if (ref.mounted) {
+      state = const CaptureStatus(phase: CapturePhase.initializing);
+    }
   }
 
   void _onFrame(CameraImage image) {
